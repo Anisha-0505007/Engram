@@ -10,18 +10,36 @@ import crypto from 'crypto';
  * @param {Buffer} rawBody  - the exact bytes of the request body (set by the verify callback in index.js)
  * @param {string} signature - the full value of the X-Hub-Signature-256 header (e.g. "sha256=abc123...")
  * @returns {boolean} true if the signature matches, false otherwise
- *
- * Steps:
- * 1. Extract just the hex part from the header (strip the "sha256=" prefix).
- * 2. Use crypto.createHmac('sha256', process.env.WHATSAPP_APP_SECRET) to make a HMAC object.
- * 3. Feed it the rawBody (.update(rawBody)) and get the hex digest (.digest('hex')).
- * 4. Convert both the computed digest and the received signature to Buffers.
- * 5. Use crypto.timingSafeEqual to compare them — do NOT use ===.
- *    (Hint: timingSafeEqual throws if the two buffers have different lengths — handle that case.)
- * 6. Return true if equal, false otherwise.
- */
+**/
 export function verifySignature(rawBody, signature) {
-  // TODO: implement the steps above
+
+
+  if (!signature) {
+    return false;
+  }
+
+  const prefix = 'sha256=';
+  if (!signature.startsWith(prefix)) {
+    return false;
+  }
+
+  const expectedHex = signature.slice(prefix.length).trim();
+  if (expectedHex.length === 0) {
+    return false;
+  }
+
+  const hmac = crypto.createHmac('sha256', process.env.WHATSAPP_APP_SECRET);
+  hmac.update(rawBody);
+  const computedHex = hmac.digest('hex');
+
+  const computedBuf = Buffer.from(computedHex, 'hex');
+  const expectedBuf = Buffer.from(expectedHex, 'hex');
+
+  if (computedBuf.length !== expectedBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(computedBuf, expectedBuf);
 }
 
 /**
@@ -31,8 +49,8 @@ export function verifySignature(rawBody, signature) {
  * If mode === 'subscribe' and verify_token matches our env var, echo the challenge.
  */
 export const verifyWebhook = (req, res) => {
-  const mode      = req.query['hub.mode'];
-  const token     = req.query['hub.verify_token'];
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
   if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
@@ -55,7 +73,7 @@ export const handleWebhook = (req, res) => {
 
   // rawBody was attached by the verify callback in index.js (see there)
   if (!verifySignature(req.rawBody, signature)) {
-    // Log without printing the body — bodies may contain user message content
+
     console.warn('❌ Invalid webhook signature');
     return res.status(401).json({ error: 'Invalid signature' });
   }
