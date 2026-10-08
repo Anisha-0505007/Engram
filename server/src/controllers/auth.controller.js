@@ -1,7 +1,8 @@
 import User from '../models/user.model.js';
+import LinkCode from '../models/linkCode.model.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
+import crypto from 'crypto';
 export const register = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -76,5 +77,29 @@ export const me = async (req, res) => {
     res.json({ userId: user._id, email: user.email, whatsappPhone: user.whatsappPhone });
   } catch {
     res.status(500).json({ error: 'Failed to fetch user' });
+  }
+};
+
+/**
+ * Generates a 6-digit one-time code and stores it in the LinkCode collection.
+ * The front-end will display this code to the user, who must send it via WhatsApp.
+ */
+export const generateLinkCode = async (req, res) => {
+  try {
+    // 1. Delete any existing codes for this user to prevent spam
+    await LinkCode.deleteMany({ userId: req.userId });
+
+    // 2. Generate a random 6-digit string
+    const code = crypto.randomInt(100000, 999999).toString();
+
+    // 3. Save the code (it will automatically expire in 10 minutes due to the TTL index)
+    await LinkCode.create({
+      userId: req.userId,
+      code,
+    });
+
+    res.json({ code });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to generate link code' });
   }
 };

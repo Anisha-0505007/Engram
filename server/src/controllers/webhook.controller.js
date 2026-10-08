@@ -1,16 +1,40 @@
 import crypto from 'crypto';
+import User from '../models/user.model.js';
+import LinkCode from '../models/linkCode.model.js';
+import Item from '../models/item.model.js';
 
 /**
- * verifySignature
+ * Idempotently saves an item to the database.
  * ✍️ STUDENT WRITES THIS FUNCTION.
- *
- * Meta sends a header: X-Hub-Signature-256: sha256=<hex_hash>
- * You must recompute the HMAC and compare it to the header.
- *
- * @param {Buffer} rawBody  - the exact bytes of the request body (set by the verify callback in index.js)
- * @param {string} signature - the full value of the X-Hub-Signature-256 header (e.g. "sha256=abc123...")
- * @returns {boolean} true if the signature matches, false otherwise
-**/
+ * 
+ * @param {Object} itemData - The parsed data to save
+ * @returns {Object} The saved (or existing) item document
+ * 
+ * Steps:
+ * 1. Meta might deliver the same webhook twice. We must not save duplicates.
+ * 2. Use Item.create(itemData) wrapped in a try/catch block.
+ * 3. If it succeeds, return the new item.
+ * 4. If it fails with a MongoDB duplicate key error (error.code === 11000), 
+ *    it means the waMessageId already exists. 
+ *    In that case, catch the error, find the existing item using Item.findOne({ waMessageId: itemData.waMessageId }), and return that.
+ * 5. If it's any other error, throw it so it can be handled upstream.
+ */
+export async function saveItemIdempotent(itemData) {
+  try {
+    const newItem = await Item.create(itemData);
+    return newItem;
+  } catch (error) {
+    if (error.code === 11000) {
+      const existingItem = await Item.findOne({ waMessageId: itemData.waMessageId });
+      return existingItem;
+    } else {
+      throw error;
+    }
+  }
+}
+
+
+
 export function verifySignature(rawBody, signature) {
 
 
@@ -68,7 +92,7 @@ export const verifyWebhook = (req, res) => {
  * We verify the signature first, then (for now) just log and return 200.
  * Real processing (parse, save, enqueue) comes in F3.
  */
-export const handleWebhook = (req, res) => {
+export const handleWebhook = async (req, res) => {
   const signature = req.headers['x-hub-signature-256'];
 
   // rawBody was attached by the verify callback in index.js (see there)
@@ -79,7 +103,73 @@ export const handleWebhook = (req, res) => {
   }
 
   // Always return 200 quickly — Meta will retry if we're slow or error
-  // Real work (save + enqueue) happens asynchronously in F3+
-  console.log('📨 Webhook received (signature OK) — processing TBD in F3');
   res.sendStatus(200);
+
+
+  try {
+    const body = req.body;
+
+    // Check if this is an actual message event (Meta sends status updates too)
+    if (body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
+      const message = body.entry[0].changes[0].value.messages[0];
+      const fromPhone = message.from; // Sender's WhatsApp number
+
+      // 1. Check if this phone number is linked to a user
+      let user = await User.findOne({ whatsappPhone: fromPhone });
+
+      // 2. If not linked, check if they sent a 6-digit link code
+      if (!user && message.type === 'text') {
+        const text = message.text.body.trim();
+        if (/^\d{6}$/.test(text)) {
+          const linkCode = await LinkCode.findOne({ code: text });
+          if (linkCode) {
+            // Link successful! Update user and delete code
+            user = await User.findById(linkCode.userId);
+            user.whatsappPhone = fromPhone;
+            await user.save();
+            await LinkCode.deleteOne({ _id: linkCode._id });
+            console.log(`✅ Linked WhatsApp number ${fromPhone} to user ${user.email}`);
+            // (In F6 we will actually reply to them via WhatsApp here)
+            return;
+          }
+        }
+        console.log(`⚠️ Unlinked phone ${fromPhone} sent a message. Ignoring.`);
+        return; // Unlinked and not a valid code — do nothing
+      }
+
+      if (!user) return; // Still not linked
+
+      // 3. Number is linked. Parse the message to prepare the Item data.
+      let itemType = 'unsupported';
+      let rawText = '';
+
+      if (message.type === 'text') {
+        itemType = 'text';
+        rawText = message.text.body;
+        // Basic URL detection (if it contains http/https, treat as link)
+        if (/https?:\/\/[^\s]+/.test(rawText)) {
+          itemType = 'link';
+        }
+      } else if (message.type === 'image') {
+        itemType = 'image';
+      } else if (message.type === 'document') {
+        itemType = 'pdf'; // assuming PDF for now
+      }
+
+      const itemData = {
+        userId: user._id,
+        source: 'whatsapp',
+        waMessageId: message.id,
+        type: itemType,
+        rawText,
+        status: 'pending',
+      };
+
+      // 4. Save item idempotently!
+      const savedItem = await saveItemIdempotent(itemData);
+      console.log(`✅ Item saved/found: ${savedItem._id} (type: ${savedItem.type})`);
+    }
+  } catch (error) {
+    console.error('Error processing webhook:', error);
+  }
 };
