@@ -4,6 +4,8 @@ import mongoose from 'mongoose';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 import authRoutes    from './routes/auth.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
@@ -13,13 +15,18 @@ import { startWorker } from './worker/worker.js';
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// helmet sets secure HTTP headers (e.g. prevents clickjacking, sniffing)
-app.use(helmet());
+// __dirname is not available in ESM — reconstruct it from import.meta.url
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Only allow requests from our frontend origin; credentials=true lets the
-// browser send cookies cross-origin during local development
+// helmet sets secure HTTP headers (e.g. prevents clickjacking, sniffing)
+// contentSecurityPolicy disabled because the React build uses inline scripts
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// In production Express serves the built React app so requests are same-origin.
+// In development the Vite dev server (port 5173) needs explicit CORS allowance.
+const isProd = process.env.NODE_ENV === 'production';
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  origin: isProd ? false : (process.env.CLIENT_ORIGIN || 'http://localhost:5173'),
   credentials: true,
 }));
 
@@ -35,9 +42,14 @@ app.use(cookieParser());   // parse cookies so req.cookies.token works
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 
-// Health-check (used by Render to confirm the process is alive)
-app.get('/', (_req, res) => {
-  res.send('Engram API is running ✅');
+// ── PRODUCTION: serve the built React app ────────────────────────────────────
+// The build command copies client/dist → server/public.
+// Any non-API request falls through to index.html so React Router (client-side
+// routing) works — without this, refreshing /dashboard returns 404 on Render.
+const publicDir = join(__dirname, '..', 'public');
+app.use(express.static(publicDir));
+app.get('*', (_req, res) => {
+  res.sendFile(join(publicDir, 'index.html'));
 });
 
 // Connect to MongoDB Atlas then start listening
