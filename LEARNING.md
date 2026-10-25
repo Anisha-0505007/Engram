@@ -4,7 +4,14 @@ This file tracks my understanding of the concepts used in the Engram project.
 
 ## Study Later
 *(Items I skipped understanding during the gate, to review later)*
-- (None yet)
+- **F4** — Media download → object storage → presigned URLs. How a WhatsApp media ID becomes a stored file. Why temporary URLs must be downloaded immediately.
+- **F5** — Job queue + worker. Atomic claim with `findOneAndUpdate`, exponential backoff, stuck-job recovery. Why we don't need Redis.
+- **F6** — Bot replies, timeline UI, Quick Add endpoint. Cursor pagination vs offset. 5s auto-refresh for pending items.
+- **F7** — SSRF guard in `urlFetcher.service.js`. Why DNS resolution must happen before the HTTP request. Private IP ranges blocked.
+- **F8** — Image enrichment via Gemini vision. One LLM call replaces a separate OCR stack. Structured JSON output with repair retry.
+- **F9** — PDF chunking (partial — PDF type accepted, full text extraction deferred).
+- **F10** — Embeddings via `text-embedding-004`. Stored as `Number[]` on items. Atlas Vector Search index required separately in Atlas UI.
+- **F11** — Failure paths: backoff, dead-letter `failed` state, Retry button in UI, `userEdits` never overwritten by re-enrichment.
 
 ## F0 — Project Setup & Deployment (Oct 5)
 - What I built: An Express "Hello World" server connected to MongoDB, deployed on Render.

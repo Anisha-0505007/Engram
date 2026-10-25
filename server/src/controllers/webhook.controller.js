@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import User from '../models/user.model.js';
 import LinkCode from '../models/linkCode.model.js';
 import Item from '../models/item.model.js';
+import Job from '../models/job.model.js';
+import { downloadWhatsAppMedia } from '../services/whatsapp.service.js';
+import { uploadFile } from '../services/storage.service.js';
 
 /**
  * Idempotently saves an item to the database.
@@ -142,6 +145,7 @@ export const handleWebhook = async (req, res) => {
       // 3. Number is linked. Parse the message to prepare the Item data.
       let itemType = 'unsupported';
       let rawText = '';
+      let mediaData = null;
 
       if (message.type === 'text') {
         itemType = 'text';
@@ -150,10 +154,32 @@ export const handleWebhook = async (req, res) => {
         if (/https?:\/\/[^\s]+/.test(rawText)) {
           itemType = 'link';
         }
-      } else if (message.type === 'image') {
-        itemType = 'image';
-      } else if (message.type === 'document') {
-        itemType = 'pdf'; // assuming PDF for now
+      } else if (message.type === 'image' || message.type === 'document') {
+        itemType = message.type === 'image' ? 'image' : 'pdf';
+        const mediaObj = message[message.type];
+        
+        try {
+          // --- F4: Media Download & Upload ---
+          // 1. Fetch binary buffer from Meta
+          const { buffer, mimeType } = await downloadWhatsAppMedia(mediaObj.id);
+          
+          // 2. Upload to Supabase bucket
+          const filename = `${user._id}/${message.id}`;
+          const storageKey = await uploadFile(buffer, filename, mimeType);
+          
+          // 3. Save the key for the Item document
+          mediaData = {
+            key: storageKey,
+            mime: mimeType,
+            size: buffer.length
+          };
+          console.log(`☁️ Uploaded media to Supabase: ${storageKey}`);
+        } catch (err) {
+          console.error('Failed to download/upload media:', err.message);
+          // We could still save the item with status='failed', or just throw.
+          // Let's throw so we return early and maybe Meta retries.
+          throw err;
+        }
       }
 
       const itemData = {
@@ -162,12 +188,19 @@ export const handleWebhook = async (req, res) => {
         waMessageId: message.id,
         type: itemType,
         rawText,
+        media: mediaData,
         status: 'pending',
       };
 
       // 4. Save item idempotently!
       const savedItem = await saveItemIdempotent(itemData);
       console.log(`✅ Item saved/found: ${savedItem._id} (type: ${savedItem.type})`);
+
+      // 5. Enqueue enrichment job (only for new items, not duplicates)
+      if (savedItem.status === 'pending' && savedItem.waMessageId === message.id) {
+        await Job.create({ type: 'enrich', itemId: savedItem._id });
+        console.log(`📬 Enqueued enrichment job for item ${savedItem._id}`);
+      }
     }
   } catch (error) {
     console.error('Error processing webhook:', error);

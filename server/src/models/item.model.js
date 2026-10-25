@@ -13,26 +13,48 @@ const itemSchema = new mongoose.Schema({
   },
   waMessageId: {
     type: String,
-    unique: true, // Idempotency: Prevents saving the exact same WhatsApp message twice
-    sparse: true, // Allows items created via 'web' to be missing this field without throwing a unique constraint error
+    unique: true,
+    sparse: true, // web/export items have no whatsapp message id
   },
   type: {
     type: String,
     enum: ['link', 'image', 'pdf', 'text', 'unsupported'],
     required: true,
   },
-  rawText: {
-    type: String,
+  rawText: { type: String },
+  url: { type: String },
+  media: {
+    key: String,
+    mime: String,
+    size: Number,
   },
+  originalTimestamp: { type: Date, default: Date.now },
   status: {
     type: String,
     enum: ['pending', 'processing', 'done', 'failed'],
-    default: 'pending', // Items start as pending, background worker picks them up later
+    default: 'pending',
   },
-  originalTimestamp: {
-    type: Date,
-    default: Date.now,
+  // Populated by the enrichment worker (F8)
+  enrichment: {
+    title: String,
+    description: String,
+    extractedText: String,
+    summary: String,
+    category: String,
+    tags: [String],
+    model: String,    // which LLM model was used
+    version: Number,  // bump to force re-enrichment
   },
+  // Overrides set by the user that survive re-enrichment
+  userEdits: {
+    category: String,
+    tags: [String],
+  },
+  // Flat text field for Atlas Search (full-text keyword search)
+  searchText: { type: String },
+  // Vector embedding for Atlas Vector Search (F10)
+  embedding: { type: [Number], default: undefined },
+  error: { type: String },
 }, {
   timestamps: true,
 });
