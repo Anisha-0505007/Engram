@@ -1,0 +1,11 @@
+version: 1
+id: 33021c75-7c18-4c8b-beb6-44c9dde3eb63
+name: gemini
+slug: gemini
+protocol: http
+port: 4901
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true

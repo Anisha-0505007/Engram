@@ -1,6 +1,12 @@
 node_modules/
 .env
+.env.*
+!.env.example
+**/.env.*
+!**/.env.example
 .DS_Store
 client/dist/
 server/public/
+postman/.dependencies/
+*.ndjson
 Agents.md

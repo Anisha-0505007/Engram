@@ -1,111 +1,50 @@
 import Item from '../models/item.model.js';
-import { enrichText, enrichImage, embedText } from './llm.service.js';
+import { enrichText, enrichImage, embedText, LLM_MODEL, EMBEDDING_MODEL } from './llm.service.js';
 import { safeFetch, extractMeta } from './urlFetcher.service.js';
-import { getPresignedUrl } from './storage.service.js';
+import { getPresignedUrl, uploadFile } from './storage.service.js';
+import { downloadWhatsAppMedia, readLimitedBody } from './whatsapp.service.js';
+import { validateMedia } from './media.service.js';
 
-/**
- * Runs the full enrichment pipeline for one item.
- * Called by the worker after claiming a job.
- */
-export async function enrichItem(itemId) {
-  const item = await Item.findById(itemId);
-  if (!item) throw new Error(`Item ${itemId} not found`);
-
-  let enrichmentData = {};
-  let textForEmbedding = '';
-
-  // ── LINK ──────────────────────────────────────────────
+export async function enrichItem(itemId, userId) {
+  const owner = { _id: itemId, userId };
+  const item = await Item.findOne(owner);
+  if (!item) return;
+  if (item.media?.id && !item.media?.key) {
+    const { buffer, mimeType } = await downloadWhatsAppMedia(item.media.id);
+    validateMedia(buffer, mimeType);
+    const key = await uploadFile(buffer, `${userId}/${item._id}`, mimeType);
+    item.media = { id: item.media.id, key, mime: mimeType, size: buffer.length };
+    await Item.updateOne(owner, { media: item.media });
+  }
+  let data;
+  let partial = false;
+  let url;
   if (item.type === 'link') {
-    const urlMatch = item.rawText?.match(/https?:\/\/[^\s]+/);
-    const url = urlMatch?.[0];
-
-    if (url) {
-      try {
-        const html = await safeFetch(url);
-        const { title, description, text } = extractMeta(html);
-        const structured = await enrichText(text || item.rawText);
-        enrichmentData = {
-          title: structured.title || title,
-          description: structured.description || description,
-          summary: structured.summary,
-          category: structured.category,
-          tags: structured.tags,
-          model: 'gemini-1.5-flash',
-          version: 1,
-        };
-        textForEmbedding = [structured.title, structured.summary, structured.tags?.join(' ')].join(' ');
-
-        // Save url separately on the item
-        await Item.updateOne({ _id: itemId }, { url });
-      } catch (err) {
-        // Dead link or SSRF blocked — partial enrichment, still searchable by date/type
-        enrichmentData = { title: url, description: 'Could not fetch page', category: 'other', tags: [], model: 'none', version: 1 };
-        textForEmbedding = url;
-      }
+    url = item.rawText?.match(/https?:\/\/[^\s]+/)?.[0];
+    let page;
+    try { page = extractMeta(await safeFetch(url)); } catch {
+      partial = true;
+      page = { title: url || 'Saved link', description: 'Page could not be fetched. Original text is still searchable.', text: item.rawText };
     }
-  }
-
-  // ── IMAGE ─────────────────────────────────────────────
-  else if (item.type === 'image') {
-    if (item.media?.key) {
-      // Fetch the image buffer from Supabase
-      const signedUrl = await getPresignedUrl(item.media.key);
-      if (signedUrl) {
-        const res = await fetch(signedUrl);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const structured = await enrichImage(buffer, item.media.mime || 'image/jpeg');
-        enrichmentData = {
-          extractedText: structured.extractedText,
-          title: structured.title,
-          description: structured.description,
-          summary: structured.summary,
-          category: structured.category,
-          tags: structured.tags,
-          model: 'gemini-1.5-flash',
-          version: 1,
-        };
-        textForEmbedding = [structured.extractedText, structured.title, structured.summary].join(' ');
-      }
-    }
-  }
-
-  // ── TEXT / PLAIN NOTE ─────────────────────────────────
-  else if (item.type === 'text') {
-    const structured = await enrichText(item.rawText || '');
-    enrichmentData = {
-      title: structured.title,
-      description: structured.description,
-      summary: structured.summary,
-      category: structured.category,
-      tags: structured.tags,
-      model: 'gemini-1.5-flash',
-      version: 1,
-    };
-    textForEmbedding = [item.rawText, structured.summary, structured.tags?.join(' ')].join(' ');
-  }
-
-  // ── EMBEDDING ─────────────────────────────────────────
-  let embedding;
-  if (textForEmbedding.trim()) {
-    embedding = await embedText(textForEmbedding);
-  }
-
-  // Build the searchText field (used by Atlas Search full-text index)
-  const effectiveTags = item.userEdits?.tags?.length ? item.userEdits.tags : enrichmentData.tags;
-  const searchText = [
-    item.rawText,
-    enrichmentData.title,
-    enrichmentData.description,
-    enrichmentData.extractedText,
-    effectiveTags?.join(' '),
-  ].filter(Boolean).join(' ');
-
-  // Never overwrite userEdits — those are user-controlled
-  await Item.findByIdAndUpdate(itemId, {
-    enrichment: enrichmentData,
-    searchText,
-    embedding,
-    status: 'done',
-    error: null,
-  });
+    // Network failures are partial; AI failures must propagate to the retry queue.
+    data = await enrichText(page.text || item.rawText || url);
+    if (partial) data.description = page.description;
+  } else if (item.type === 'image' || item.type === 'pdf') {
+    if (!item.media?.key) throw new Error('Media is missing. Send the file again.');
+    const signedUrl = await getPresignedUrl(item.media.key);
+    if (!signedUrl) throw new Error('Media storage is unavailable.');
+    const response = await fetch(signedUrl, { signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error('Could not download stored media.');
+    const buffer = await readLimitedBody(response, 10 * 1024 * 1024);
+    data = await enrichImage(buffer, item.type === 'pdf' ? 'application/pdf' : item.media.mime);
+    if (!data.extractedText && !data.summary) throw new Error('No readable content could be extracted.');
+  } else if (item.type === 'text') data = await enrichText(item.rawText || '');
+  else throw new Error('Unsupported item type');
+  const tags = item.userEdits?.tags ?? data.tags;
+  const searchText = [item.rawText, data.title, data.description, data.extractedText, data.summary, tags?.join(' ')].filter(Boolean).join(' ');
+  // Persist extracted text before embedding so a provider failure does not hide useful content.
+  await Item.updateOne(owner, { enrichment: { ...data, model: LLM_MODEL, version: 2 }, searchText, partial, url });
+  const embedding = await embedText(searchText);
+  await Item.updateOne(owner, { embedding, embeddingModel: EMBEDDING_MODEL,
+    effectiveCategory: item.userEdits?.category ?? data.category, status: 'done', error: null });
 }

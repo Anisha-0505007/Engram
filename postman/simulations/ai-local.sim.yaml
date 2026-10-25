@@ -1,0 +1,6 @@
+simulation: ai-local
+routing: path
+mocks:
+  - name: gemini
+    routeKey: gemini
+    path: postman/mocks/gemini/config.yaml

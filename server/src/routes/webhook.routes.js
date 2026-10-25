@@ -1,5 +1,6 @@
 import express from 'express';
 import { verifyWebhook, handleWebhook } from '../controllers/webhook.controller.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
@@ -12,7 +13,9 @@ router.get('/', verifyWebhook);
 // This is needed because the HMAC signature is computed over the exact raw bytes.
 router.post(
   '/',
+  rateLimit(120),
   express.json({
+    limit: '1mb',
     verify: (req, _res, buf) => {
       // buf is a Buffer of the raw request bytes — stash it for verifySignature
 

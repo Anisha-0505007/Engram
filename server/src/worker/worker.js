@@ -1,69 +1,63 @@
 import Job from '../models/job.model.js';
 import Item from '../models/item.model.js';
 import { enrichItem } from '../services/enrich.service.js';
+import { withAiUser } from '../services/aiQuota.service.js';
+import { sendWhatsAppReply } from '../services/whatsapp.service.js';
 
-const POLL_MS = 5000;          // Check for new jobs every 5 seconds
-const STUCK_THRESHOLD_MS = 60000; // Jobs running > 60s are considered stuck
+const POLL_MS = 2000;
+const STUCK_THRESHOLD_MS = 120_000;
+export const backoffMs = attempts => Math.min(30_000 * 4 ** (attempts - 1), 480_000);
 
-function backoffMs(attempts) {
-  // Exponential backoff: 30s, 120s, 480s
-  return Math.min(30_000 * Math.pow(4, attempts - 1), 480_000);
+export async function recoverStuckJobs() {
+  const cutoff = new Date(Date.now() - STUCK_THRESHOLD_MS);
+  await Job.updateMany({ status: 'running', lockedAt: { $lt: cutoff } }, { status: 'queued', lockedAt: null });
 }
 
-async function recoverStuckJobs() {
-  const stuckCutoff = new Date(Date.now() - STUCK_THRESHOLD_MS);
-  await Job.updateMany(
-    { status: 'running', lockedAt: { $lt: stuckCutoff } },
-    { status: 'queued', lockedAt: null }
-  );
-}
-
-async function processOneJob() {
-  // Atomic claim: find a queued job whose runAt has passed and mark it running
-  const job = await Job.findOneAndUpdate(
-    { status: 'queued', runAt: { $lte: new Date() } },
+export async function processOneJob({ enrich = enrichItem, reply = sendWhatsAppReply } = {}) {
+  const job = await Job.findOneAndUpdate({ status: 'queued', runAt: { $lte: new Date() } },
     { $set: { status: 'running', lockedAt: new Date() }, $inc: { attempts: 1 } },
-    { new: true, sort: { runAt: 1 } }
-  );
-
-  if (!job) return; // No work to do right now
-
+    { returnDocument: 'after', sort: { type: -1, runAt: 1 } });
+  if (!job) return false;
+  // Heartbeats prevent another tick reclaiming a healthy, long-running AI job.
+  const heartbeat = setInterval(() => {
+    Job.updateOne({ _id: job._id, status: 'running' }, { lockedAt: new Date() }).catch(() => {});
+  }, 20_000);
   try {
-    await Item.findByIdAndUpdate(job.itemId, { status: 'processing' });
-    await enrichItem(job.itemId);
-    await Job.findByIdAndUpdate(job._id, { status: 'done' });
-    console.log(`✅ Job ${job._id} done (item: ${job.itemId})`);
-  } catch (err) {
-    console.error(`❌ Job ${job._id} failed: ${err.message}`);
-
-    const failed = job.attempts >= job.maxAttempts;
-    await Job.findByIdAndUpdate(job._id, {
-      status: failed ? 'failed' : 'queued',
-      lastError: err.message,
-      lockedAt: null,
-      runAt: failed ? undefined : new Date(Date.now() + backoffMs(job.attempts)),
-    });
-
-    await Item.findByIdAndUpdate(job.itemId, {
-      status: failed ? 'failed' : 'pending',
-      error: err.message,
-    });
-  }
+    if (job.type === 'reply') await reply(job.phone, job.replyText);
+    else {
+      const item = await Item.findById(job.itemId);
+      if (item && !item.deleting) {
+        await Item.updateOne({ _id: item._id, userId: item.userId }, { status: 'processing' });
+        await withAiUser(item.userId, () => enrich(item._id, item.userId));
+      }
+    }
+    await Job.updateOne({ _id: job._id }, { status: 'done', lockedAt: null });
+  } catch (error) {
+    const quota = error.code === 'AI_QUOTA';
+    const failed = !quota && (error.retryable === false || job.attempts >= job.maxAttempts);
+    const tomorrow = new Date(); tomorrow.setUTCHours(24, 0, 1, 0);
+    await Job.updateOne({ _id: job._id }, { $set: {
+      status: failed ? 'failed' : 'queued', lastError: error.message, lockedAt: null,
+      runAt: quota ? tomorrow : new Date(Date.now() + backoffMs(job.attempts)),
+    }, ...(quota ? { $inc: { attempts: -1 } } : {}) });
+    if (job.itemId) {
+      const item = await Item.findById(job.itemId);
+      if (item) await Item.updateOne({ _id: item._id, userId: item.userId }, {
+        status: failed ? 'failed' : 'pending', error: error.message,
+      });
+    }
+  } finally { clearInterval(heartbeat); }
+  return true;
 }
 
 export function startWorker() {
-  console.log('🔄 Worker started — polling every', POLL_MS / 1000, 'seconds');
-
+  let stopped = false;
+  let timer;
   const tick = async () => {
-    try {
-      await recoverStuckJobs();
-      await processOneJob();
-    } catch (err) {
-      console.error('Worker tick error:', err.message);
-    } finally {
-      setTimeout(tick, POLL_MS);
-    }
+    try { await recoverStuckJobs(); await processOneJob(); }
+    catch { console.error('Worker could not reach the database. Retrying.'); }
+    finally { if (!stopped) timer = setTimeout(tick, POLL_MS); }
   };
-
   tick();
+  return () => { stopped = true; clearTimeout(timer); };
 }

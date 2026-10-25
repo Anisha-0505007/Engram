@@ -1,208 +1,94 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
+import { z } from 'zod';
 import User from '../models/user.model.js';
 import LinkCode from '../models/linkCode.model.js';
 import Item from '../models/item.model.js';
 import Job from '../models/job.model.js';
-import { downloadWhatsAppMedia } from '../services/whatsapp.service.js';
-import { uploadFile } from '../services/storage.service.js';
+import { enqueueEnrichment } from '../services/jobs.service.js';
+import { sendWhatsAppReply } from '../services/whatsapp.service.js';
 
-/**
- * Idempotently saves an item to the database.
- * ✍️ STUDENT WRITES THIS FUNCTION.
- * 
- * @param {Object} itemData - The parsed data to save
- * @returns {Object} The saved (or existing) item document
- * 
- * Steps:
- * 1. Meta might deliver the same webhook twice. We must not save duplicates.
- * 2. Use Item.create(itemData) wrapped in a try/catch block.
- * 3. If it succeeds, return the new item.
- * 4. If it fails with a MongoDB duplicate key error (error.code === 11000), 
- *    it means the waMessageId already exists. 
- *    In that case, catch the error, find the existing item using Item.findOne({ waMessageId: itemData.waMessageId }), and return that.
- * 5. If it's any other error, throw it so it can be handled upstream.
- */
 export async function saveItemIdempotent(itemData) {
-  try {
-    const newItem = await Item.create(itemData);
-    return newItem;
-  } catch (error) {
-    if (error.code === 11000) {
-      const existingItem = await Item.findOne({ waMessageId: itemData.waMessageId });
-      return existingItem;
-    } else {
-      throw error;
-    }
+  try { return await Item.create(itemData); }
+  catch (error) {
+    if (error.code !== 11000 || !itemData.waMessageId) throw error;
+    const existing = await Item.findOne({ waMessageId: itemData.waMessageId, userId: itemData.userId });
+    if (!existing) throw error;
+    return existing;
   }
 }
-
-
 
 export function verifySignature(rawBody, signature) {
-
-
-  if (!signature) {
-    return false;
-  }
-
-  const prefix = 'sha256=';
-  if (!signature.startsWith(prefix)) {
-    return false;
-  }
-
-  const expectedHex = signature.slice(prefix.length).trim();
-  if (expectedHex.length === 0) {
-    return false;
-  }
-
-  const hmac = crypto.createHmac('sha256', process.env.WHATSAPP_APP_SECRET);
-  hmac.update(rawBody);
-  const computedHex = hmac.digest('hex');
-
-  const computedBuf = Buffer.from(computedHex, 'hex');
-  const expectedBuf = Buffer.from(expectedHex, 'hex');
-
-  if (computedBuf.length !== expectedBuf.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(computedBuf, expectedBuf);
+  if (!process.env.WHATSAPP_APP_SECRET || !Buffer.isBuffer(rawBody) || typeof signature !== 'string' || !/^sha256=[a-f\d]{64}$/i.test(signature)) return false;
+  const expected = Buffer.from(signature.slice(7), 'hex');
+  const actual = crypto.createHmac('sha256', process.env.WHATSAPP_APP_SECRET).update(rawBody).digest();
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-/**
- * GET /webhook/whatsapp
- * Meta calls this once when you register the URL, to confirm you own it.
- * It sends three query params: hub.mode, hub.verify_token, hub.challenge.
- * If mode === 'subscribe' and verify_token matches our env var, echo the challenge.
- */
-export const verifyWebhook = (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+export function verifyWebhook(req, res) {
+  const parsed = z.object({ 'hub.mode': z.literal('subscribe'), 'hub.verify_token': z.string(), 'hub.challenge': z.string().max(500) }).safeParse(req.query);
+  if (!parsed.success || !process.env.WHATSAPP_VERIFY_TOKEN || parsed.data['hub.verify_token'] !== process.env.WHATSAPP_VERIFY_TOKEN) return res.sendStatus(403);
+  res.status(200).send(parsed.data['hub.challenge']);
+}
 
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
-    console.log('✅ Webhook verified by Meta');
-    return res.status(200).send(challenge);
-  }
+const Message = z.object({
+  id: z.string().min(1).max(250), from: z.string().regex(/^\d{6,20}$/), type: z.string().max(40),
+  timestamp: z.string().regex(/^\d+$/).optional(),
+  text: z.object({ body: z.string().max(20000) }).optional(),
+  image: z.object({ id: z.string().max(200), mime_type: z.string().optional(), caption: z.string().max(20000).optional() }).optional(),
+  document: z.object({ id: z.string().max(200), mime_type: z.string().optional(), caption: z.string().max(20000).optional() }).optional(),
+});
+const Payload = z.object({ entry: z.array(z.object({ changes: z.array(z.object({
+  value: z.object({ messages: z.array(Message).max(100).optional() }),
+})).max(100) })).max(100).optional() });
 
-  // Token mismatch — someone else is trying to verify, or misconfigured
-  res.status(403).json({ error: 'Verification failed' });
-};
+// Unlinked/unsupported content is never persisted; replies contain no saved content.
+const replyWithoutStorage = (phone, text) => sendWhatsAppReply(phone, text).catch(() => console.warn('WhatsApp instruction reply failed.'));
 
-/**
- * POST /webhook/whatsapp
- * Meta sends every incoming WhatsApp message here.
- * We verify the signature first, then (for now) just log and return 200.
- * Real processing (parse, save, enqueue) comes in F3.
- */
-export const handleWebhook = async (req, res) => {
-  const signature = req.headers['x-hub-signature-256'];
-
-  // rawBody was attached by the verify callback in index.js (see there)
-  if (!verifySignature(req.rawBody, signature)) {
-
-    console.warn('❌ Invalid webhook signature');
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
-
-  // Always return 200 quickly — Meta will retry if we're slow or error
-  res.sendStatus(200);
-
-
-  try {
-    const body = req.body;
-
-    // Check if this is an actual message event (Meta sends status updates too)
-    if (body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
-      const message = body.entry[0].changes[0].value.messages[0];
-      const fromPhone = message.from; // Sender's WhatsApp number
-
-      // 1. Check if this phone number is linked to a user
-      let user = await User.findOne({ whatsappPhone: fromPhone });
-
-      // 2. If not linked, check if they sent a 6-digit link code
-      if (!user && message.type === 'text') {
-        const text = message.text.body.trim();
-        if (/^\d{6}$/.test(text)) {
-          const linkCode = await LinkCode.findOne({ code: text });
-          if (linkCode) {
-            // Link successful! Update user and delete code
-            user = await User.findById(linkCode.userId);
-            user.whatsappPhone = fromPhone;
-            await user.save();
-            await LinkCode.deleteOne({ _id: linkCode._id });
-            console.log(`✅ Linked WhatsApp number ${fromPhone} to user ${user.email}`);
-            // (In F6 we will actually reply to them via WhatsApp here)
-            return;
-          }
-        }
-        console.log(`⚠️ Unlinked phone ${fromPhone} sent a message. Ignoring.`);
-        return; // Unlinked and not a valid code — do nothing
-      }
-
-      if (!user) return; // Still not linked
-
-      // 3. Number is linked. Parse the message to prepare the Item data.
-      let itemType = 'unsupported';
-      let rawText = '';
-      let mediaData = null;
-
-      if (message.type === 'text') {
-        itemType = 'text';
-        rawText = message.text.body;
-        // Basic URL detection (if it contains http/https, treat as link)
-        if (/https?:\/\/[^\s]+/.test(rawText)) {
-          itemType = 'link';
-        }
-      } else if (message.type === 'image' || message.type === 'document') {
-        itemType = message.type === 'image' ? 'image' : 'pdf';
-        const mediaObj = message[message.type];
-        
-        try {
-          // --- F4: Media Download & Upload ---
-          // 1. Fetch binary buffer from Meta
-          const { buffer, mimeType } = await downloadWhatsAppMedia(mediaObj.id);
-          
-          // 2. Upload to Supabase bucket
-          const filename = `${user._id}/${message.id}`;
-          const storageKey = await uploadFile(buffer, filename, mimeType);
-          
-          // 3. Save the key for the Item document
-          mediaData = {
-            key: storageKey,
-            mime: mimeType,
-            size: buffer.length
-          };
-          console.log(`☁️ Uploaded media to Supabase: ${storageKey}`);
-        } catch (err) {
-          console.error('Failed to download/upload media:', err.message);
-          // We could still save the item with status='failed', or just throw.
-          // Let's throw so we return early and maybe Meta retries.
-          throw err;
-        }
-      }
-
-      const itemData = {
-        userId: user._id,
-        source: 'whatsapp',
-        waMessageId: message.id,
-        type: itemType,
-        rawText,
-        media: mediaData,
-        status: 'pending',
-      };
-
-      // 4. Save item idempotently!
-      const savedItem = await saveItemIdempotent(itemData);
-      console.log(`✅ Item saved/found: ${savedItem._id} (type: ${savedItem.type})`);
-
-      // 5. Enqueue enrichment job (only for new items, not duplicates)
-      if (savedItem.status === 'pending' && savedItem.waMessageId === message.id) {
-        await Job.create({ type: 'enrich', itemId: savedItem._id });
-        console.log(`📬 Enqueued enrichment job for item ${savedItem._id}`);
+export async function processMessage(message) {
+  let user = await User.findOne({ whatsappPhone: message.from });
+  if (!user) {
+    const code = message.type === 'text' ? message.text?.body.trim() : '';
+    if (/^\d{6}$/.test(code)) {
+      // TTL cleanup is asynchronous, so explicitly enforce age at consumption time.
+      const linked = await LinkCode.findOneAndDelete({ code, createdAt: { $gt: new Date(Date.now() - 600_000) } });
+      if (linked) {
+        user = await User.findOneAndUpdate({ _id: linked.userId, whatsappPhone: { $exists: false } }, { whatsappPhone: message.from }, { returnDocument: 'after' });
+        if (user) { void replyWithoutStorage(message.from, 'WhatsApp linked ✅ Send a link, note, image or PDF to save it.'); return; }
       }
     }
-  } catch (error) {
-    console.error('Error processing webhook:', error);
+    void replyWithoutStorage(message.from, 'Open Engram, choose Get Link Code, then send the 6-digit code here.');
+    return;
   }
-};
+  const media = message.type === 'image' ? message.image : message.document;
+  const supported = (message.type === 'text' && message.text) || (message.type === 'image' && media) ||
+    (message.type === 'document' && media?.mime_type === 'application/pdf');
+  if (!supported) { void replyWithoutStorage(message.from, "Can't save that yet. Send a link, note, image or PDF (up to 10 MB)."); return; }
+  const rawText = message.text?.body || media?.caption || '';
+  const type = message.type === 'text' ? (/https?:\/\/[^\s]+/.test(rawText) ? 'link' : 'text') : message.type === 'image' ? 'image' : 'pdf';
+  const item = await saveItemIdempotent({ userId: user._id, source: 'whatsapp', waMessageId: message.id,
+    type, rawText, searchText: rawText, media: media ? { id: media.id, mime: media.mime_type } : undefined,
+    originalTimestamp: message.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date() });
+  // Repeated deliveries repair a missing job, but cannot enqueue a second copy.
+  await enqueueEnrichment(item);
+  try {
+    await Job.updateOne({ dedupeKey: `reply:${message.id}` }, { $setOnInsert: {
+      type: 'reply', userId: user._id, phone: message.from, replyText: 'Saved ✅ Processing in the background.', dedupeKey: `reply:${message.id}`,
+    } }, { upsert: true });
+  } catch (error) { if (error.code !== 11000) throw error; }
+}
+
+export async function handleWebhook(req, res) {
+  if (!verifySignature(req.rawBody, req.headers['x-hub-signature-256'])) return res.status(401).json({ error: 'Invalid signature' });
+  const parsed = Payload.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid webhook payload' });
+  try {
+    for (const entry of parsed.data.entry || []) for (const change of entry.changes) {
+      for (const message of change.value.messages || []) await processMessage(message);
+    }
+    // Acknowledge only durable capture + queue writes. Downloads and AI run later.
+    res.sendStatus(200);
+  } catch {
+    console.error('Webhook capture failed; sender should retry.');
+    res.sendStatus(503);
+  }
+}

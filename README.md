@@ -1,193 +1,134 @@
 # Engram
 
-> Save the way you already do. Find anything, later.
+Save from WhatsApp or the web. Find your saved content later.
 
 ## Problem Statement
-
-People use WhatsApp as a dumping ground for important things — links, screenshots, PDFs, notes — and then can't find them. WhatsApp search only matches exact text; it can't find a screenshot by what it *shows*, or a link by what it's *about*.
+People save notes, links, screenshots and PDFs in WhatsApp, then struggle to retrieve them by topic or meaning.
 
 ## Target Users
-
-Students and young professionals who save things to themselves on WhatsApp. First users: hostel mates, classmates.
+Students and young professionals, initially classmates and hostel mates.
 
 ## Solution
-
-Engram is your second brain on WhatsApp. Forward or send content to the Engram bot number. It saves everything, runs AI enrichment in the background (OCR on images, text extraction from links, semantic understanding), and lets you find items later by meaning — not just exact words.
-
-**Example:** Forwarded a screenshot of a Wi-Fi plan three months ago? Search "wifi plan screenshot" and it appears. Ask "what was that PG link I saved in August?" and Engram answers with a citation.
+Users send content to Engram's business number or use Web Quick Add. Express saves it, a Mongo-backed worker enriches it, and a private timeline supports keyword/semantic search and grounded Q&A.
 
 ## Key Features
+- Register/login/logout with bcrypt and JWT in httpOnly cookies; user-scoped item access.
+- Signed Meta webhooks, batched message parsing, duplicate item/job protection and queued bot acknowledgements.
+- Web capture for notes, links, JPEG/PNG/WebP images and PDFs up to 10 MB.
+- Background link analysis, image OCR and PDF extraction through Gemini, with validated JSON, one repair retry, embeddings and visible failure/retry states.
+- Atlas Search and Vector Search combined with RRF; type/date/category filters and explicit fallback warnings.
+- Timeline status filters, stable cursor pagination, private media viewing, editable tags/category and deletion with storage cleanup.
+- Per-user daily AI-call budget, worker backoff, terminal failure state and stuck-job recovery.
 
-- **📱 WhatsApp Capture** — Forward/send links, images, or text to the Engram bot. Webhook saves and acknowledges instantly ("Saved ✅").
-- **🌐 Web Quick Add** — Paste a link or note in the web UI. Same enrichment pipeline, no WhatsApp needed (great for evaluators).
-- **🤖 AI Enrichment** — Gemini extracts title, summary, category, and tags from links; OCR + description from images; structured text from PDFs.
-- **🔍 Hybrid Search** — Keyword search + semantic vector search merged with Reciprocal Rank Fusion. Finds "passport image" even if it's tagged "visa".
-- **✨ Ask Mode** — Ask a natural language question, get a grounded AI answer with cited sources from your own saved items.
-- **🎯 Smart Filters** — Filter by type (link/image/pdf/text), date range, or category. Query understanding parses "links from August" automatically.
-- **✏️ Edit & Delete** — Override AI-assigned tags/category. Deletes cascade to media storage and pending jobs.
-- **🔁 Retry** — Failed enrichment jobs show a Retry button. Exponential backoff built in.
+These features depend on valid external configuration. See the release verification status below; implementation does not establish live provider success.
 
 ## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Frontend | React 18 (Vite) |
-| Backend | Node.js + Express |
-| Database | MongoDB Atlas (Vector Search + Atlas Search) |
-| Embeddings & LLM | Google Gemini (`text-embedding-004`, `gemini-1.5-flash`) |
-| Object Storage | Supabase Storage |
-| WhatsApp | Meta WhatsApp Cloud API |
-| Auth | bcrypt + JWT in httpOnly cookies |
-| Deployment | Render (backend + frontend served from Express) |
+React 18/Vite, Node.js/Express 5, Mongoose/MongoDB Atlas, Supabase private object storage, Meta WhatsApp Cloud API and Gemini REST API. Native Node test runner; no new dependencies were required for the reliability changes.
 
 ## Architecture
-
+```mermaid
+flowchart LR
+  WA[WhatsApp user] --> Meta[Meta Cloud API]
+  Meta -->|Signed webhook| API[Express API]
+  Web[React web app] --> API
+  API --> DB[(MongoDB Atlas)]
+  Worker[Worker in same process] -->|Atomic claim| DB
+  Worker --> Gemini[Gemini API]
+  Worker --> Storage[Private Supabase bucket]
+  Worker -->|Replies| Meta
 ```
-WhatsApp user → Meta Cloud API ──webhook──▶ Express API ──▶ MongoDB Atlas
-React web app ──────── REST ───────────────▶     │           (items, jobs, vector + text indexes)
-                              Worker loop ────────▶ Gemini API
-                              (same process)        Supabase Storage
-```
-
-### Key Design Decisions
 
 | Decision | Reason |
-|----------|--------|
-| Monolith, single deploy | One developer, ~3 weeks. Express serves API + built React app. |
-| Queue = `jobs` collection in MongoDB | Retry, backoff, failed state with no Redis or Kafka needed. |
-| Worker in same process | Free hosting tiers (Render) usually allow one service. Module can be split later. |
-| Atlas Vector Search + Atlas Search | One database, one connection, `userId` pre-filter, no separate vector DB. |
-| Plain Node, no LangChain | Pipeline is small and fixed; fewer abstraction layers to understand and debug. |
-| One Gemini vision call for OCR + description | Avoids a separate OCR library. |
-| Media in Supabase Storage | Atlas free storage is only 512MB; keeps media private via signed URLs. |
+|---|---|
+| One MERN deployment | Express serves the React build and APIs on one origin. |
+| MongoDB jobs | Atomic claim, retry and dead-letter state without Redis. |
+| Same-process worker | Small deployment; a heartbeat protects long jobs. |
+| Atlas text/vector search | One database, owner pre-filters, no separate vector database. |
+| Small LLM wrapper using fetch | Provider HTTP, JSON validation and repair are in one file. |
+| Private object storage | Store media outside MongoDB; authorize ownership before issuing a signed link. |
 
-**Explicitly not used:** Redis (jobs collection is sufficient), Kafka (no fan-out needed), Docker/Kubernetes (overkill for one service), LangChain (adds abstraction without benefit at this scale), TypeScript (MERN stack assignment scope).
+Idempotency uses unique message IDs and job deduplication keys. Async processing keeps media downloads and AI outside the webhook. Retries use 30s → 120s → 480s backoff; failed jobs can be retried. Item indexes cover owner/timestamp and owner/type. Rate limiting is in-memory for one instance. AI quotas are stored atomically in MongoDB and reset by UTC day.
 
-### System Design Concepts Used
+Back-of-envelope assumption: 100 users × 20 items/day gives 2,000 items/day. One 768-number vector is roughly 6 KB before BSON/index overhead; media dominates storage. The serial worker and free-tier quotas are prototype limits, not a production capacity claim.
 
-- **Idempotency** — `waMessageId` unique index prevents duplicate saves on Meta webhook retries.
-- **Async processing** — Webhook returns 200 immediately; enrichment runs in the background worker.
-- **Retry with exponential backoff** — `30s → 120s → 480s`; after 3 failures → `failed` state.
-- **Dead-letter state** — Failed jobs remain visible so the user can retry manually.
-- **Pre-filtering** — Atlas Vector Search filters by `userId` before scoring to ensure strict data isolation.
-- **Reciprocal Rank Fusion** — `score(d) = Σ 1/(60 + rank_i(d))` merges keyword and vector rankings.
-- **SSRF protection** — DNS resolution happens before the HTTP request; private IP ranges are blocked.
+Deliberately omitted: caching layer, Redis, message broker, microservices, LangChain, Kubernetes and a separate vector database; this fixed pipeline does not justify their operational cost.
 
 ## Local Setup
+Use a Node version supported by the installed packages (Node 24 was used for local verification).
 
-### Prerequisites
-- Node.js 20+
-- MongoDB Atlas account (free M0 tier works)
-- Supabase account (free tier)
-- Google AI Studio API key (Gemini)
-- Meta Developer account with a WhatsApp test app
+1. Install dependencies in `server/` and `client/` with `npm ci`.
+2. Copy `server/.env.example` to `server/.env` yourself and fill the values. Never commit or share this file.
+3. Create a **private** Supabase bucket named `engram-media`.
+4. From `client/`, run `npm run build`. Vite writes directly to `server/public`.
+5. From `server/`, run `npm start`. Open http://localhost:8000.
+6. For frontend development, use `npm run dev` in `client/`; Vite proxies `/api` to port 8000.
 
-### Steps
+From `server/`, run `node scripts/searchIndexes.mjs --apply` to create/update the required `text_index` and `vector_index`. Wait until both are queryable; `node scripts/searchIndexes.mjs` reports their state. The definitions include owner, type, timestamp, effective category and embedding model filters.
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/Anisha-0505007/Engram.git
-cd Engram
+Old embeddings must be regenerated when their model changes, even if both models have 768 dimensions. Use **Reprocess** on completed items. The search deliberately excludes embeddings from other model spaces.
 
-# 2. Install server dependencies
-cd server && npm install
-
-# 3. Copy env file and fill in your secrets
-cp .env.example .env
-# Edit .env with your real values
-
-# 4. Install client dependencies
-cd ../client && npm install
-
-# 5. Build the client (for production-like serving from Express)
+### Checks
+```text
+cd server
+npm test
+cd ../client
 npm run build
-
-# 6. Run the server (serves API + built client)
-cd ../server && npm run dev
 ```
-
-### Atlas Vector Search Index
-
-In MongoDB Atlas UI, create a Search index on the `items` collection:
-
-```json
-{
-  "fields": [
-    {
-      "type": "vector",
-      "path": "embedding",
-      "numDimensions": 768,
-      "similarity": "cosine"
-    },
-    {
-      "type": "filter",
-      "path": "userId"
-    }
-  ]
-}
-```
-Name the index `vector_index`. Without this, the app degrades gracefully to keyword-only search.
+The optional Postman simulation checks the real AI HTTP client against a local stand-in, not real model quality. Commands are in [the simulation context](postman/simulations/ai-local.context.md). The optional `node scripts/verifyLive.mjs` uses temporary synthetic records and removes them afterward; `--without-storage` skips the upload/download prerequisite.
 
 ## Environment Variables
+The full placeholder template is `server/.env.example`. Set secrets in the server environment only.
 
-Copy `.env.example` → `.env`. All values are required for full functionality.
+| Variable | Purpose |
+|---|---|
+| `PORT`, `NODE_ENV` | HTTP port and production cookie behavior |
+| `MONGODB_URI`, `JWT_SECRET` | Atlas connection and JWT signing |
+| `CLIENT_ORIGIN` | Exact Vite origin in development |
+| `GEMINI_API_KEY` | Gemini credential |
+| `GEMINI_MODEL` | Generation model; default `gemini-3.5-flash-lite` |
+| `GEMINI_EMBEDDING_MODEL` | Default `gemini-embedding-001`, fixed 768-dimensional output |
+| `DAILY_AI_CALL_LIMIT` | Application budget per user per UTC day; default 100, not the provider's quota |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Server-only private media access |
+| `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Webhook signature and GET verification |
+| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Media retrieval and replies |
+| `WHATSAPP_API_VERSION` | Configurable Graph version; default `v23.0`, verify against your Meta app |
 
-| Variable | Description |
-|----------|-------------|
-| `PORT` | Server port (default 8000) |
-| `MONGODB_URI` | MongoDB Atlas connection string |
-| `JWT_SECRET` | Secret for signing JWTs (generate a random 32+ char string) |
-| `GEMINI_API_KEY` | Google AI Studio API key |
-| `WHATSAPP_APP_SECRET` | Meta app secret (for webhook HMAC verification) |
-| `WHATSAPP_VERIFY_TOKEN` | String you choose; must match what you set in Meta Developer Console |
-| `WHATSAPP_ACCESS_TOKEN` | Temporary Meta access token |
-| `WHATSAPP_PHONE_NUMBER_ID` | The test phone number ID from Meta Developer Console |
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key from Supabase settings |
-| `CLIENT_ORIGIN` | Frontend origin for CORS (e.g. `http://localhost:5173`) |
+`GEMINI_BASE_URL` and `WHATSAPP_BASE_URL` are optional test overrides. Do not point a real credential at an untrusted host. Model availability and provider limits must be checked for the actual project; no fixed free-tier allowance is promised.
+
+Provider references: [Gemini models](https://ai.google.dev/gemini-api/docs/models), [embeddings](https://ai.google.dev/gemini-api/docs/embeddings), [PDF input](https://ai.google.dev/gemini-api/docs/document-processing), [Meta's message contract](https://www.postman.com/meta/whatsapp-business-platform/folder/o48mro7/messages).
 
 ## Deployment
+Recorded hosted URL: https://engram-eont.onrender.com. The current local changes must be deployed before that URL serves them; this session has not verified the hosted release or demo credentials.
 
-**Live URL:** `https://engram-eont.onrender.com`
+Render configuration: root directory `server`, build command `bash build.sh`, start command `npm start`. Configure server variables with `NODE_ENV=production`. Register `https://YOUR_HOST/webhook/whatsapp` with Meta. Verify `/api/health`, `/dashboard` refresh, cookies and all workflows in incognito.
 
-**Demo credentials:**
-- Email: `demo@engram.app`
-- Password: `Demo1234!`
+**Meta test mode:** only explicitly whitelisted phone numbers can use the test business number. The official API cannot read personal chats. Evaluators can use Web Quick Add; image/PDF capture also requires configured private storage.
 
-**⚠️ WhatsApp test mode note:** Meta's test number can only receive messages from phone numbers explicitly whitelisted in the Meta Developer Console → WhatsApp → API Setup → "To" numbers. If you want to test WhatsApp capture, ask for your number to be added, or use the **Web Quick Add** feature which runs the same pipeline.
+Do not publish demo credentials until the account exists and its login has been tested. Use a dedicated account without personal saved content.
 
-### Deploy on Render
-
-1. Push to GitHub.
-2. Create a new **Web Service** on Render, connect your repo.
-3. Set **Root Directory** to `server`.
-4. Set **Build Command** to:
-   ```
-   npm install && cd ../client && npm install && npm run build && mv dist ../server/public
-   ```
-5. Set **Start Command** to `npm start`.
-6. Add all environment variables from `.env.example` in Render's Environment tab.
+### Verification status — 25 Oct 2026
+- Local signature, duplicate capture, HTTP auth/isolation, pagination, edits, SSRF and worker/quota checks passed.
+- Local React production build passed.
+- Postman AI simulation passed JSON repair, successful enrichment, embeddings, HTTP 429/503 handling and terminal failure behavior.
+- Local app connected to Atlas and served the UI; unauthenticated item requests returned 401.
+- Both Atlas indexes are READY and queryable. A live synthetic-vector check passed owner/type/date/category isolation on text and vector search; this verifies filtering, not semantic relevance.
+- Gemini model metadata lookup returned 200, but actual generation returned **403**. Provider permissions/access must be corrected before live AI features can pass.
+- Local Supabase storage was unconfigured during verification. Private media upload/view/delete remains blocked until configuration is supplied.
+- Real WhatsApp delivery/replies, complete hosted workflow, demo video and submission are not verified.
 
 ## Evaluation Results
-
-See [`docs/evaluation.md`](docs/evaluation.md) for the full 25-query evaluation across keyword-only, vector-only, and hybrid conditions.
-
-**Summary:**
-
-| Condition | Recall@5 |
-|-----------|----------|
-| Keyword-only | 60% |
-| Vector-only | 100% |
-| **Hybrid (RRF)** | **100%** |
+[Evaluation status and reproducible runner](docs/evaluation.md). Previous unsupported performance figures were removed. Run against at least 25 actual query/expected-ID cases before reporting scores. RRF has no guarantee of outperforming both inputs.
 
 ## Limitations and What I Deliberately Didn't Build
-
-- **PDF chunking** — Long PDFs are stored as one item. Full chunk-level retrieval was deprioritized; the cut order in `AGENTS.md` explicitly lists this.
-- **Chat export import** — `.zip` import from WhatsApp was cut (same cut order).
-- **In-WhatsApp search replies** — Users can't search by replying to the bot; they use the web UI. Cut to save time.
-- **Redis / Kafka / Docker** — Not needed at this scale; using MongoDB as a job queue is sufficient and simpler to understand.
-- **Voice note transcription** — Nice-to-have; cut.
+- PDF extraction is model-generated and can omit content; no PDF/article chunk retrieval in this release.
+- No chat-export import, in-WhatsApp search, voice transcription or reminders.
+- No automated semantic-quality benchmark has been measured yet.
+- Keyword fallback is basic word matching when Atlas Search is unavailable. The UI explicitly warns when fallbacks occur.
+- Media cleanup errors are surfaced. Deleting an actively processing item is rejected with a retry message.
+- Bot reply jobs are retried; a crash after sending but before recording success can produce a duplicate acknowledgement. Capture remains idempotent.
+- The worker resolves owners from trusted database jobs; web item operations derive ownership from a verified JWT, never a client-supplied owner ID.
 
 ## AI Usage
+AI tools assisted implementation and review. Earlier learning notes are in `LEARNING.md`; the student explicitly skipped further learning gates near the deadline. Automated tests establish only the behavior they exercise. The student should review the code and live demo before claiming understanding or completion.
 
-AI tools (Google Gemini via Antigravity IDE) assisted in writing the code. I reviewed every file, ran the tests, and can explain the architecture and key decisions. The AGENTS.md protocol required understanding gates after each feature — see `LEARNING.md` for what I actually learned.
+Follow [the UI checklist](docs/ui-checklist.md) before recording and submission.

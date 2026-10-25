@@ -19,7 +19,7 @@ const BUCKET_NAME = 'engram-media';
  * @returns {Promise<string>} The storage key (path) of the uploaded file
  */
 export const uploadFile = async (buffer, filename, contentType) => {
-  if (!supabase) throw new Error('Supabase client not initialized. Check your .env');
+  if (!supabase) throw new Error('Media storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server.');
 
   // We place files in a folder structure: userId/filename or just flat. Let's do flat for now with unique names.
   const { data, error } = await supabase.storage
@@ -30,8 +30,7 @@ export const uploadFile = async (buffer, filename, contentType) => {
     });
 
   if (error) {
-    console.error('Supabase upload error:', error);
-    throw new Error('Failed to upload file to Supabase');
+    throw new Error('Media upload failed. Check the private engram-media bucket and storage permissions.');
   }
 
   return data.path; // This is the storageKey we save in MongoDB
@@ -51,9 +50,14 @@ export const getPresignedUrl = async (storageKey) => {
     .createSignedUrl(storageKey, 3600); // 3600 seconds = 1 hour
 
   if (error) {
-    console.error('Supabase signed URL error:', error);
     return null;
   }
 
   return data.signedUrl;
 };
+
+export async function deleteFile(key) {
+  if (!supabase) throw new Error('Media storage unavailable. Deletion was not completed.');
+  const { error } = await supabase.storage.from(BUCKET_NAME).remove([key]);
+  if (error) throw new Error('Could not delete media. Please retry.');
+}

@@ -1,431 +1,204 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
-// ── STATUS BADGE ──────────────────────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const styles = {
-    pending:    { background: '#f59e0b22', color: '#f59e0b', border: '1px solid #f59e0b44' },
-    processing: { background: '#3b82f622', color: '#3b82f6', border: '1px solid #3b82f644' },
-    done:       { background: '#10b98122', color: '#10b981', border: '1px solid #10b98144' },
-    failed:     { background: '#ef444422', color: '#ef4444', border: '1px solid #ef444444' },
+const message = error => error.response?.data?.error || (error.message === 'File exceeds 10 MB' ? error.message : 'Could not reach the server. Please try again.');
+const icons = { link: '🔗', image: '🖼️', pdf: '📄', text: '📝' };
+
+function ItemCard({ item, onEdit, onDelete, onRetry, onError }) {
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const tags = item.userEdits?.tags ?? item.enrichment?.tags ?? [];
+  const category = item.userEdits?.category ?? item.enrichment?.category;
+  const title = item.enrichment?.title || item.rawText?.slice(0, 80) || (item.type === 'pdf' ? 'Saved PDF' : 'Saved image');
+  const openMedia = async () => {
+    setBusy(true);
+    try { const { data } = await api.get(`/items/${item._id}/media`); setMediaUrl(data.url); }
+    catch (error) { onError(message(error)); }
+    finally { setBusy(false); }
   };
-  return (
-    <span style={{
-      ...styles[status],
-      padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px'
-    }}>
-      {status}
-    </span>
-  );
-}
-
-// ── TYPE ICON ─────────────────────────────────────────────────────────────────
-function TypeIcon({ type }) {
-  const icons = { link: '🔗', image: '🖼️', pdf: '📄', text: '📝', unsupported: '❓' };
-  return <span style={{ fontSize: 18 }}>{icons[type] || '📝'}</span>;
-}
-
-// ── ITEM CARD ─────────────────────────────────────────────────────────────────
-function ItemCard({ item, onDelete, onRetry, onEdit }) {
-  const title = item.enrichment?.title || item.rawText?.slice(0, 60) || 'Untitled';
-  const summary = item.enrichment?.summary || item.rawText?.slice(0, 120) || '';
-  const tags = item.userEdits?.tags?.length ? item.userEdits.tags : (item.enrichment?.tags || []);
-  const category = item.userEdits?.category || item.enrichment?.category;
-
-  return (
-    <div className="item-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
-          <TypeIcon type={item.type} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-text)', lineHeight: 1.3, marginBottom: 4 }}>
-              {title}
-            </div>
-            {summary && (
-              <p style={{ fontSize: 13, color: 'var(--color-muted)', margin: 0, lineHeight: 1.5 }}>
-                {summary.slice(0, 150)}{summary.length > 150 ? '…' : ''}
-              </p>
-            )}
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-              <StatusBadge status={item.status} />
-              {category && (
-                <span style={{ background: '#8b5cf622', color: '#8b5cf6', border: '1px solid #8b5cf644', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600 }}>
-                  {category}
-                </span>
-              )}
-              {tags.map(tag => (
-                <span key={tag} style={{ background: 'var(--color-surface)', padding: '2px 8px', borderRadius: 999, fontSize: 11, color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>
-                  #{tag}
-                </span>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 6 }}>
-              {new Date(item.originalTimestamp || item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-          {item.status === 'failed' && (
-            <button onClick={() => onRetry(item._id)} title="Retry" style={{ background: 'none', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>
-              ↺ Retry
-            </button>
-          )}
-          <button onClick={() => onEdit(item)} title="Edit tags" style={{ background: 'none', border: '1px solid var(--color-border)', color: 'var(--color-muted)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>
-            ✏️
-          </button>
-          <button onClick={() => onDelete(item._id)} title="Delete" style={{ background: 'none', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>
-            🗑
-          </button>
-        </div>
+  return <article id={`item-${item._id}`} className="item-card">
+    <div className="item-top"><div className="item-heading"><span aria-hidden="true">{icons[item.type]}</span>
+      <h2>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{title}</a> : title}</h2>
+    </div><span className={`status-pill status-${item.status}`}>{item.status}</span></div>
+    <p className="item-summary">{item.enrichment?.summary || item.rawText || 'Content will appear after processing.'}</p>
+    {item.partial && <p className="notice">Page unavailable. Original content is still saved.</p>}
+    <div className="item-tags">{category && <span>{category}</span>}{tags.map(tag => <span key={tag}>#{tag}</span>)}</div>
+    {item.error && <p className="alert alert-error" role="status">{item.error}</p>}
+    {mediaUrl && item.type === 'image' && <img className="media-preview" src={mediaUrl} alt={item.enrichment?.description || title} onError={() => { setMediaUrl(''); onError('Preview expired or unavailable. Click View file to try again.'); }} />}
+    {mediaUrl && <p><a href={mediaUrl} target="_blank" rel="noreferrer">Open {item.type === 'pdf' ? 'PDF' : 'image'} in a new tab ↗</a></p>}
+    {item.enrichment?.extractedText && <details><summary>Extracted text</summary><p className="extracted-text">{item.enrichment.extractedText}</p></details>}
+    <div className="item-footer"><time>{new Date(item.originalTimestamp || item.createdAt).toLocaleString('en-IN')}</time>
+      <div className="item-actions">
+        {item.media?.key && <button disabled={busy} onClick={openMedia}>{busy ? 'Loading…' : 'View file'}</button>}
+        {['failed', 'done'].includes(item.status) && <button onClick={() => onRetry(item._id)}>{item.status === 'failed' ? 'Retry' : 'Reprocess'}</button>}
+        <button onClick={() => onEdit(item)}>Edit</button>
+        <button onClick={() => onDelete(item._id)}>Delete</button>
       </div>
-      {item.error && (
-        <div style={{ marginTop: 8, padding: '6px 10px', background: '#ef444411', borderRadius: 6, fontSize: 12, color: '#ef4444' }}>
-          ⚠ {item.error}
-        </div>
-      )}
     </div>
-  );
+  </article>;
 }
 
-// ── EDIT MODAL ────────────────────────────────────────────────────────────────
 function EditModal({ item, onClose, onSave }) {
-  const [category, setCategory] = useState(item.userEdits?.category || item.enrichment?.category || '');
-  const [tags, setTags] = useState((item.userEdits?.tags || item.enrichment?.tags || []).join(', '));
-
-  const handleSave = async () => {
-    await onSave(item._id, { category, tags: tags.split(',').map(t => t.trim()).filter(Boolean) });
-    onClose();
+  const [category, setCategory] = useState(item.userEdits?.category ?? item.enrichment?.category ?? '');
+  const [tags, setTags] = useState((item.userEdits?.tags ?? item.enrichment?.tags ?? []).join(', '));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const save = async e => {
+    e.preventDefault(); setSaving(true); setError('');
+    try { await onSave(item._id, { category, tags: [...new Set(tags.split(',').map(t => t.trim()).filter(Boolean))] }); onClose(); }
+    catch (err) { setError(message(err)); }
+    finally { setSaving(false); }
   };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, width: 380, maxWidth: '90vw' }}>
-        <h3 style={{ margin: '0 0 16px', color: 'var(--color-text)' }}>Edit Item</h3>
-        <label style={{ fontSize: 13, color: 'var(--color-muted)' }}>Category</label>
-        <input value={category} onChange={e => setCategory(e.target.value)} className="input" style={{ marginBottom: 12 }} />
-        <label style={{ fontSize: 13, color: 'var(--color-muted)' }}>Tags (comma-separated)</label>
-        <input value={tags} onChange={e => setTags(e.target.value)} className="input" placeholder="e.g. study, finance, important" />
-        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} className="btn btn-ghost" style={{ width: 'auto', padding: '8px 16px' }}>Cancel</button>
-          <button onClick={handleSave} className="btn" style={{ width: 'auto', padding: '8px 16px' }}>Save</button>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="modal-backdrop"><form className="edit-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-title" onSubmit={save} onKeyDown={e => { if (e.key === 'Escape' && !saving) onClose(); }}>
+    <h2 id="edit-title">Edit saved item</h2><p>Your changes stay when AI processes this item again.</p>
+    {error && <div className="alert alert-error" role="alert">{error}</div>}
+    <label>Category<input value={category} maxLength={80} onChange={e => setCategory(e.target.value)} autoFocus /></label>
+    <label>Tags, separated by commas<input value={tags} onChange={e => setTags(e.target.value)} /></label>
+    <div className="dialog-actions"><button type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div>
+  </form></div>;
 }
 
-// ── MAIN DASHBOARD ────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [user, setUser]           = useState(null);
-  const [items, setItems]         = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [searchQ, setSearchQ]     = useState('');
-  const [quickAdd, setQuickAdd]   = useState('');
-  const [adding, setAdding]       = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [askMode, setAskMode]     = useState(false);
-  const [asking, setAsking]       = useState(false);
-  const [askAnswer, setAskAnswer] = useState(null);  // { answer, sources }
-  const [linkCode, setLinkCode]   = useState(null);
-  const [editItem, setEditItem]   = useState(null);
-  const [filterType, setFilterType] = useState('');
-  const [hasMore, setHasMore]     = useState(false);
-  const [cursor, setCursor]       = useState(null);
   const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [warnings, setWarnings] = useState([]);
+  const [quickAdd, setQuickAdd] = useState('');
+  const [file, setFile] = useState(null);
+  const fileRef = useRef(null);
+  const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState('');
+  const [askMode, setAskMode] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState(null);
+  const [view, setView] = useState('timeline');
+  const [filters, setFilters] = useState({ type: '', dateFrom: '', dateTo: '', category: '', status: '' });
+  const [cursor, setCursor] = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const [linkCode, setLinkCode] = useState(null);
+  const requestVersion = useRef(0);
 
-  // Fetch identity
-  useEffect(() => {
-    api.get('/auth/me')
-      .then(r => setUser(r.data))
-      .catch(() => navigate('/login'));
+  const params = useCallback(() => Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), [filters]);
+  const loadIdentity = useCallback(async () => {
+    try { const { data } = await api.get('/auth/me'); setUser(data); }
+    catch (err) { if (err.response?.status === 401) navigate('/login'); else setError(message(err)); }
   }, [navigate]);
+  useEffect(() => { loadIdentity(); }, [loadIdentity]);
 
-  // Load items
-  const loadItems = useCallback(async (reset = true) => {
-    setLoading(true);
+  const loadItems = useCallback(async (nextCursor = null, quiet = false) => {
+    const version = ++requestVersion.current;
+    if (!quiet) setLoading(true);
     try {
-      const params = { limit: 15 };
-      if (filterType) params.type = filterType;
-      if (!reset && cursor) params.cursor = cursor;
-      const { data } = await api.get('/items', { params });
-      setItems(prev => reset ? data.items : [...prev, ...data.items]);
-      setHasMore(!!data.nextCursor);
+      const { data } = await api.get('/items', { params: { ...params(), limit: 15, ...(nextCursor ? { cursor: nextCursor } : {}) } });
+      if (version !== requestVersion.current) return;
+      setItems(prev => nextCursor ? [...prev, ...data.items] : data.items);
       setCursor(data.nextCursor);
-    } finally {
-      setLoading(false);
-    }
-  }, [filterType, cursor]);
-
-  useEffect(() => { loadItems(true); }, [filterType]); // eslint-disable-line
-
-  // Auto-refresh pending/processing items every 5s
+    } catch (err) { if (version === requestVersion.current) setError(message(err)); }
+    finally { if (version === requestVersion.current && !quiet) setLoading(false); }
+  }, [params]);
+  useEffect(() => { if (view === 'timeline' && user) loadItems(); }, [loadItems, view, user?.userId]);
   useEffect(() => {
-    const iv = setInterval(() => {
-      const needsRefresh = items.some(i => i.status === 'pending' || i.status === 'processing');
-      if (needsRefresh) loadItems(true);
-    }, 5000);
-    return () => clearInterval(iv);
-  }, [items]); // eslint-disable-line
+    // Do not replace a search or a multi-page timeline during background refresh.
+    if (view !== 'timeline' || items.length > 15 || !items.some(i => ['pending', 'processing'].includes(i.status))) return;
+    const timer = setInterval(() => loadItems(null, true), 5000);
+    return () => clearInterval(timer);
+  }, [items, view, loadItems]);
+  useEffect(() => {
+    if (!linkCode || user?.whatsappPhone) return;
+    const timer = setInterval(loadIdentity, 5000);
+    return () => clearInterval(timer);
+  }, [linkCode, user?.whatsappPhone, loadIdentity]);
 
-  const handleSearch = async (e) => {
+  const runAction = async fn => {
+    setError(''); setSuccess('');
+    try { await fn(); } catch (err) { setError(message(err)); }
+  };
+  const handleAdd = e => {
     e.preventDefault();
-    setAskAnswer(null);
-    if (!searchQ.trim()) return loadItems(true);
-    if (askMode) {
-      // Ask mode: get a grounded answer
-      setAsking(true);
+    runAction(async () => {
+      if (!quickAdd.trim() && !file) return;
+      setAdding(true);
       try {
-        const { data } = await api.post('/items/ask', { q: searchQ });
-        setAskAnswer(data);
-        // Also run search to show the underlying items
-        const { data: sd } = await api.get('/items/search', { params: { q: searchQ, type: filterType } });
-        setItems(sd.items);
-        setHasMore(false);
-      } finally {
-        setAsking(false);
-      }
-      return;
-    }
-    setSearching(true);
-    try {
-      const { data } = await api.get('/items/search', { params: { q: searchQ, type: filterType } });
-      setItems(data.items);
-      setHasMore(false);
-    } finally {
-      setSearching(false);
-    }
+        if (file) {
+          if (file.size > 10 * 1024 * 1024) throw new Error('File exceeds 10 MB');
+          const data = await new Promise((resolve, reject) => {
+            const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file);
+          });
+          await api.post('/items/upload', { data, mime: file.type, caption: quickAdd });
+        } else await api.post('/items', { text: quickAdd });
+        setQuickAdd(''); setFile(null); if (fileRef.current) fileRef.current.value = '';
+        setSuccess('Saved. Processing in the background.'); setAnswer(null); setView('timeline'); await loadItems();
+      } finally { setAdding(false); }
+    });
   };
-
-  const handleQuickAdd = async (e) => {
+  const handleSearch = e => {
     e.preventDefault();
-    if (!quickAdd.trim()) return;
-    setAdding(true);
-    try {
-      await api.post('/items', { text: quickAdd });
-      setQuickAdd('');
-      loadItems(true);
-    } finally {
-      setAdding(false);
-    }
+    runAction(async () => {
+      if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) { setError('Start date must be before end date.'); return; }
+      if (!query.trim() && !askMode) { setView('timeline'); setAnswer(null); setWarnings([]); return loadItems(); }
+      if (!query.trim()) { setError('Enter a question first.'); return; }
+      const version = ++requestVersion.current;
+      setAsking(true); setAnswer(null); setWarnings([]);
+      try {
+        const searchParams = { ...params(), q: query }; delete searchParams.status;
+        const { data } = askMode ? await api.post('/items/ask', searchParams) : await api.get('/items/search', { params: searchParams });
+        if (version !== requestVersion.current) return;
+        setItems(data.items || []); setCursor(null); setWarnings(data.warnings || []);
+        setView('search'); if (askMode) setAnswer(data);
+      } finally { setAsking(false); setLoading(false); }
+    });
   };
-
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this item?')) return;
-    await api.delete(`/items/${id}`);
-    setItems(prev => prev.filter(i => i._id !== id));
+  const retry = id => runAction(async () => { await api.post(`/items/${id}/retry`); setSuccess('Queued for processing.'); setItems(prev => prev.map(item => item._id === id ? { ...item, status: 'pending', error: null } : item)); });
+  const remove = id => {
+    if (!confirm('Delete this item and its stored file?')) return;
+    runAction(async () => { await api.delete(`/items/${id}`); setItems(prev => prev.filter(item => item._id !== id)); setSuccess('Item deleted.'); });
   };
+  const saveEdit = async (id, edits) => { const { data } = await api.patch(`/items/${id}`, edits); setItems(prev => prev.map(item => item._id === id ? data : item)); setSuccess('Changes saved.'); };
+  const changeFilter = (key, value) => { requestVersion.current++; setFilters(prev => ({ ...prev, [key]: value })); setView('timeline'); setAnswer(null); setWarnings([]); };
 
-  const handleRetry = async (id) => {
-    await api.post(`/items/${id}/retry`);
-    loadItems(true);
-  };
-
-  const handleEdit = (item) => setEditItem(item);
-
-  const handleSaveEdit = async (id, { category, tags }) => {
-    const { data } = await api.patch(`/items/${id}`, { category, tags });
-    setItems(prev => prev.map(i => i._id === id ? data : i));
-  };
-
-  const handleLinkCode = async () => {
-    const { data } = await api.post('/auth/link-code');
-    setLinkCode(data.code);
-  };
-
-  const handleLogout = async () => {
-    await api.post('/auth/logout');
-    navigate('/login');
-  };
-
-  const phoneLinked = user?.whatsappPhone;
-
-  return (
-    <div className="dashboard">
-      {/* ── HEADER ── */}
-      <header className="dashboard-header">
-        <div className="brand">
-          <div className="brand-dot" />
-          <span className="brand-name">Engram</span>
-        </div>
-        {user && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="user-badge">
-              <div className="avatar">{user.email[0].toUpperCase()}</div>
-              <span style={{ fontSize: 13, color: 'var(--color-muted)' }}>{user.email}</span>
-            </div>
-            <button id="logout-btn" className="btn btn-ghost" style={{ width: 'auto', padding: '8px 16px' }} onClick={handleLogout}>
-              Sign out
-            </button>
-          </div>
-        )}
-      </header>
-
-      <main style={{ maxWidth: 780, margin: '0 auto', padding: '24px 16px' }}>
-
-        {/* ── QUICK ADD ── */}
-        <form onSubmit={handleQuickAdd} style={{ marginBottom: 24, display: 'flex', gap: 8 }}>
-          <input
-            id="quick-add-input"
-            className="input"
-            style={{ flex: 1, margin: 0 }}
-            value={quickAdd}
-            onChange={e => setQuickAdd(e.target.value)}
-            placeholder="Paste a link, or type a note to save…"
-          />
-          <button id="quick-add-btn" type="submit" className="btn" style={{ width: 'auto', padding: '10px 20px' }} disabled={adding}>
-            {adding ? '…' : 'Save'}
-          </button>
+  return <div className="dashboard">
+    <header className="dashboard-header"><div className="brand"><div className="brand-dot" /><span className="brand-name">Engram</span></div>
+      <div className="header-actions"><span>{user?.email}</span><button className="btn btn-ghost" onClick={() => runAction(async () => { await api.post('/auth/logout'); navigate('/login'); })}>Sign out</button></div>
+    </header>
+    <main className="workspace">
+      <div className="workspace-intro"><h1>Your saved things, found again.</h1><p>Save a note, link, screenshot or PDF. Search by meaning when you need it.</p></div>
+      {error && <div className="alert alert-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}>×</button></div>}
+      {success && <div className="alert alert-success" role="status">{success}</div>}
+      {warnings.map(warning => <div className="notice" role="status" key={warning}>{warning}</div>)}
+      <section className="capture-panel" aria-labelledby="save-title"><h2 id="save-title">Save something</h2>
+        <form onSubmit={handleAdd}><textarea id="quick-add-input" value={quickAdd} maxLength={20000} onChange={e => setQuickAdd(e.target.value)} placeholder="Paste a link, write a note, or add a caption to your file…" aria-label="Note, link or caption" />
+          <div className="capture-actions"><label className="file-label">Attach image or PDF<input ref={fileRef} id="file-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => {
+            const selected = e.target.files?.[0];
+            if (selected?.size > 10 * 1024 * 1024) { setError('Choose a file smaller than 10 MB.'); e.target.value = ''; return; }
+            setFile(selected || null);
+          }} /></label><button id="quick-add-btn" className="btn" disabled={adding || (!quickAdd.trim() && !file)}>{adding ? 'Saving…' : 'Save'}</button></div>
+          <p className="field-hint">{file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'JPEG, PNG, WebP or PDF · up to 10 MB · stored privately'}</p>
         </form>
-
-        {/* ── SEARCH + ASK TOGGLE ── */}
-        <form onSubmit={handleSearch} style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-          <input
-            id="search-input"
-            className="input"
-            style={{ flex: 1, margin: 0 }}
-            value={searchQ}
-            onChange={e => setSearchQ(e.target.value)}
-            placeholder={askMode ? 'Ask a question about your saved items…' : 'Search your saved items…'}
-          />
-          <button
-            id="ask-toggle-btn"
-            type="button"
-            onClick={() => { setAskMode(m => !m); setAskAnswer(null); }}
-            title={askMode ? 'Switch to search' : 'Switch to Ask mode (AI answer)'}
-            style={{
-              padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              background: askMode ? 'var(--color-accent)' : 'var(--color-surface)',
-              color: askMode ? '#fff' : 'var(--color-muted)',
-              border: '1px solid var(--color-border)', transition: 'all 0.2s',
-            }}
-          >
-            {askMode ? '✨ Ask' : '✨ Ask'}
-          </button>
-          <button id="search-btn" type="submit" className="btn btn-ghost" style={{ width: 'auto', padding: '10px 20px' }} disabled={searching || asking}>
-            {searching || asking ? '…' : askMode ? '→' : '🔍'}
-          </button>
-        </form>
-
-        {/* ── ASK ANSWER PANEL ── */}
-        {askAnswer && (
-          <div style={{
-            background: 'linear-gradient(135deg, #1e1b4b22, #312e8122)',
-            border: '1px solid #6366f144',
-            borderRadius: 12, padding: 20, marginBottom: 20,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <span style={{ fontSize: 18 }}>✨</span>
-              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text)' }}>AI Answer</span>
-            </div>
-            <p style={{ margin: '0 0 12px', fontSize: 14, lineHeight: 1.7, color: 'var(--color-text)' }}>
-              {askAnswer.answer}
-            </p>
-            {askAnswer.sources?.length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Sources
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {askAnswer.sources.map(s => (
-                    <span key={s._id} style={{
-                      background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                      borderRadius: 6, padding: '4px 10px', fontSize: 12, color: 'var(--color-muted)',
-                    }}>
-                      {s.type === 'link' ? '🔗' : s.type === 'image' ? '🖼️' : s.type === 'pdf' ? '📄' : '📝'} {s.title?.slice(0, 40)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── FILTERS ── */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-          {['', 'link', 'image', 'pdf', 'text'].map(t => (
-            <button key={t} onClick={() => { setFilterType(t); setSearchQ(''); setAskAnswer(null); }}
-              style={{
-                padding: '4px 14px', borderRadius: 999, fontSize: 13, cursor: 'pointer',
-                background: filterType === t ? 'var(--color-accent)' : 'var(--color-surface)',
-                color: filterType === t ? '#fff' : 'var(--color-muted)',
-                border: '1px solid var(--color-border)',
-                transition: 'all 0.15s',
-              }}>
-              {t || 'All'} {t === 'link' ? '🔗' : t === 'image' ? '🖼️' : t === 'pdf' ? '📄' : t === 'text' ? '📝' : ''}
-            </button>
-          ))}
-        </div>
-
-
-        {/* ── WHATSAPP LINK SECTION ── */}
-        {!phoneLinked && (
-          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-            <p style={{ margin: '0 0 10px', fontSize: 14, color: 'var(--color-muted)' }}>
-              📱 Link your WhatsApp number to save content by forwarding messages to the Engram bot.
-            </p>
-            {!linkCode ? (
-              <button id="link-whatsapp-btn" className="btn" style={{ width: 'auto', padding: '8px 18px' }} onClick={handleLinkCode}>
-                Get Link Code
-              </button>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 28, fontWeight: 700, fontFamily: 'monospace', letterSpacing: 4, color: 'var(--color-accent)' }}>{linkCode}</span>
-                <span style={{ fontSize: 13, color: 'var(--color-muted)' }}>Send this code to your Engram WhatsApp bot! Expires in 10 min.</span>
-              </div>
-            )}
-          </div>
-        )}
-        {phoneLinked && (
-          <p style={{ fontSize: 13, color: '#10b981', marginBottom: 16 }}>
-            ✅ WhatsApp linked: {phoneLinked}
-          </p>
-        )}
-
-        {/* ── ITEMS LIST ── */}
-        {loading && items.length === 0 && (
-          <div className="page-center" style={{ minHeight: 200 }}>
-            <span className="spinner" style={{ width: 32, height: 32 }} />
-          </div>
-        )}
-
-        {!loading && items.length === 0 && (
-          <div className="empty-state">
-            <h2>No items yet</h2>
-            <p style={{ marginTop: 8, color: 'var(--color-muted)', fontSize: 14 }}>
-              Paste a link above, or link your WhatsApp and forward content to the bot.
-            </p>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {items.map(item => (
-            <ItemCard
-              key={item._id}
-              item={item}
-              onDelete={handleDelete}
-              onRetry={handleRetry}
-              onEdit={handleEdit}
-            />
-          ))}
-        </div>
-
-        {hasMore && (
-          <div style={{ textAlign: 'center', marginTop: 20 }}>
-            <button className="btn btn-ghost" style={{ width: 'auto', padding: '8px 24px' }} onClick={() => loadItems(false)}>
-              Load more
-            </button>
-          </div>
-        )}
-      </main>
-
-      {editItem && (
-        <EditModal
-          item={editItem}
-          onClose={() => setEditItem(null)}
-          onSave={handleSaveEdit}
-        />
-      )}
-    </div>
-  );
+      </section>
+      <section className="search-panel" aria-label="Search saved items"><form onSubmit={handleSearch} className="search-row"><input id="search-input" value={query} maxLength={500} onChange={e => setQuery(e.target.value)} placeholder={askMode ? 'Ask a question about your saved items…' : 'Try “wifi screenshot” or “links from August”…'} aria-label="Search query" />
+        <button id="ask-toggle-btn" type="button" className={askMode ? 'mode-active' : ''} aria-pressed={askMode} onClick={() => { setAskMode(!askMode); setAnswer(null); }}>Ask AI</button>
+        <button id="search-btn" className="btn" disabled={asking}>{asking ? 'Searching…' : askMode ? 'Ask' : 'Search'}</button></form>
+        <div className="filters"><label>Type<select value={filters.type} onChange={e => changeFilter('type', e.target.value)}><option value="">All types</option>{['link', 'image', 'pdf', 'text'].map(type => <option key={type}>{type}</option>)}</select></label>
+          <label>From<input type="date" value={filters.dateFrom} onChange={e => changeFilter('dateFrom', e.target.value)} /></label><label>To<input type="date" value={filters.dateTo} onChange={e => changeFilter('dateTo', e.target.value)} /></label>
+          <label>Category<input value={filters.category} maxLength={80} placeholder="Any category" onChange={e => changeFilter('category', e.target.value)} /></label>
+          <label>Status<select value={filters.status} onChange={e => changeFilter('status', e.target.value)}><option value="">All statuses</option>{['pending', 'processing', 'done', 'failed'].map(status => <option key={status}>{status}</option>)}</select></label>
+        </div><p className="field-hint">Dates use UTC. Status applies to the timeline; search and Ask use type, date and category.</p>
+      </section>
+      <section className="whatsapp-panel"><div><strong>{user?.whatsappPhone ? `WhatsApp linked: ${user.whatsappPhone}` : 'Save straight from WhatsApp'}</strong><p>Forward to the Engram business number. Test mode requires your number to be whitelisted.</p></div>
+        {!user?.whatsappPhone && <div>{linkCode && <p className="link-code">{linkCode}<small>Send this code to the bot within 10 minutes.</small></p>}<button id="link-whatsapp-btn" onClick={() => runAction(async () => { const { data } = await api.post('/auth/link-code'); setLinkCode(data.code); })}>{linkCode ? 'New code' : 'Get Link Code'}</button></div>}
+      </section>
+      {answer && <section className="answer-panel"><h2>Answer from your saved items</h2><p>{answer.answer}</p><div className="source-links">{answer.sources?.map(source => <a key={source._id} href={`#item-${source._id}`}>{source.title}</a>)}</div></section>}
+      <div className="results-heading"><h2>{view === 'search' ? 'Search results' : 'Your timeline'}</h2><button onClick={() => { setView('timeline'); setQuery(''); setAnswer(null); setWarnings([]); loadItems(); }}>Refresh timeline</button></div>
+      {loading && <p role="status">Loading saved items…</p>}
+      {!loading && !items.length && <div className="empty-state"><h2>{error ? 'Could not load your items' : view === 'search' ? 'No matching items' : 'Nothing saved here yet'}</h2><p>{view === 'search' ? 'Try fewer words or a wider date range.' : 'Save a note, link or file above, or adjust your filters.'}</p><button onClick={() => loadItems()}>Try again</button></div>}
+      <div className="items-list">{items.map(item => <ItemCard key={item._id} item={item} onEdit={setEditItem} onDelete={remove} onRetry={retry} onError={setError} />)}</div>
+      {cursor && view === 'timeline' && <button className="btn load-more" disabled={loading} onClick={() => loadItems(cursor)}>{loading ? 'Loading…' : 'Load more'}</button>}
+      <p className="field-hint">Pending items on the first timeline page refresh every 5 seconds.</p>
+    </main>
+    {editItem && <EditModal item={editItem} onClose={() => setEditItem(null)} onSave={saveEdit} />}
+  </div>;
 }

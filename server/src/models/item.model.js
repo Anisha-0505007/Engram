@@ -24,6 +24,7 @@ const itemSchema = new mongoose.Schema({
   rawText: { type: String },
   url: { type: String },
   media: {
+    id: String,
     key: String,
     mime: String,
     size: Number,
@@ -54,9 +55,17 @@ const itemSchema = new mongoose.Schema({
   searchText: { type: String },
   // Vector embedding for Atlas Vector Search (F10)
   embedding: { type: [Number], default: undefined },
+  embeddingModel: String,
+  effectiveCategory: String,
+  partial: { type: Boolean, default: false },
+  deleting: { type: Boolean, default: false },
   error: { type: String },
 }, {
   timestamps: true,
 });
 
+itemSchema.index({ userId: 1, originalTimestamp: -1, _id: -1 });
+itemSchema.index({ userId: 1, type: 1, originalTimestamp: -1 });
+// Undefined distinguishes an explicit empty tag override from no override.
+itemSchema.path('userEdits.tags').default(undefined);
 export default mongoose.model('Item', itemSchema);

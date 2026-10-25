@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 export const register = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.validated;
 
     // Hash the password before saving — bcrypt is one-way, so even if the DB
     // leaks, attackers can't reverse the hash to get the original password.
@@ -35,7 +35,7 @@ export const register = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.validated;
 
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });

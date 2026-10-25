@@ -18,7 +18,8 @@ const authenticate = (req, res, next) => {
 
   try {
     // jwt.verify throws if the token is expired or tampered with
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (typeof payload.userId !== 'string' || !/^[a-f\d]{24}$/i.test(payload.userId)) throw new Error('Invalid owner');
     req.userId = payload.userId; // attach to request — used by every protected controller
     next();
   } catch {
