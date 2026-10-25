@@ -48,7 +48,8 @@ app.use('/api/items', itemRoutes);
 // routing) works — without this, refreshing /dashboard returns 404 on Render.
 const publicDir = join(__dirname, '..', 'public');
 app.use(express.static(publicDir));
-app.get('*', (_req, res) => {
+// Express 5 removed bare '*' wildcards — use app.use() as the SPA catch-all instead
+app.use((_req, res) => {
   res.sendFile(join(publicDir, 'index.html'));
 });
 
