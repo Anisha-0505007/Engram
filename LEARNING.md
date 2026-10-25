@@ -12,6 +12,11 @@ This file tracks my understanding of the concepts used in the Engram project.
 - **F9** — PDF chunking (partial — PDF type accepted, full text extraction deferred).
 - **F10** — Embeddings via `text-embedding-004`. Stored as `Number[]` on items. Atlas Vector Search index required separately in Atlas UI.
 - **F11** — Failure paths: backoff, dead-letter `failed` state, Retry button in UI, `userEdits` never overwritten by re-enrichment.
+- **F13** — Query understanding: LLM parses natural language into `{text, type?, dateFrom?, dateTo?, category?}`. Zod validates. Falls back to plain text on parse failure.
+- **F14** — RRF merge: `score = Σ 1/(60 + rank)`. Hybrid always ≥ either source alone.
+- **F15** — Grounded Q&A: top search results passed to LLM with "cite item ids, say 'I couldn't find that' if absent".
+- **F16** — Evaluation: 25-case eval set in `docs/evaluation.md`.
+- **F17-F20** — UI polish, security pass, README, final deploy — skipped gates, deadline Oct 26.
 
 ## F0 — Project Setup & Deployment (Oct 5)
 - What I built: An Express "Hello World" server connected to MongoDB, deployed on Render.

@@ -124,6 +124,9 @@ export default function Dashboard() {
   const [quickAdd, setQuickAdd]   = useState('');
   const [adding, setAdding]       = useState(false);
   const [searching, setSearching] = useState(false);
+  const [askMode, setAskMode]     = useState(false);
+  const [asking, setAsking]       = useState(false);
+  const [askAnswer, setAskAnswer] = useState(null);  // { answer, sources }
   const [linkCode, setLinkCode]   = useState(null);
   const [editItem, setEditItem]   = useState(null);
   const [filterType, setFilterType] = useState('');
@@ -167,7 +170,23 @@ export default function Dashboard() {
 
   const handleSearch = async (e) => {
     e.preventDefault();
+    setAskAnswer(null);
     if (!searchQ.trim()) return loadItems(true);
+    if (askMode) {
+      // Ask mode: get a grounded answer
+      setAsking(true);
+      try {
+        const { data } = await api.post('/items/ask', { q: searchQ });
+        setAskAnswer(data);
+        // Also run search to show the underlying items
+        const { data: sd } = await api.get('/items/search', { params: { q: searchQ, type: filterType } });
+        setItems(sd.items);
+        setHasMore(false);
+      } finally {
+        setAsking(false);
+      }
+      return;
+    }
     setSearching(true);
     try {
       const { data } = await api.get('/items/search', { params: { q: searchQ, type: filterType } });
@@ -259,7 +278,7 @@ export default function Dashboard() {
           </button>
         </form>
 
-        {/* ── SEARCH ── */}
+        {/* ── SEARCH + ASK TOGGLE ── */}
         <form onSubmit={handleSearch} style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
           <input
             id="search-input"
@@ -267,17 +286,65 @@ export default function Dashboard() {
             style={{ flex: 1, margin: 0 }}
             value={searchQ}
             onChange={e => setSearchQ(e.target.value)}
-            placeholder="Search your saved items…"
+            placeholder={askMode ? 'Ask a question about your saved items…' : 'Search your saved items…'}
           />
-          <button id="search-btn" type="submit" className="btn btn-ghost" style={{ width: 'auto', padding: '10px 20px' }} disabled={searching}>
-            {searching ? '…' : '🔍'}
+          <button
+            id="ask-toggle-btn"
+            type="button"
+            onClick={() => { setAskMode(m => !m); setAskAnswer(null); }}
+            title={askMode ? 'Switch to search' : 'Switch to Ask mode (AI answer)'}
+            style={{
+              padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              background: askMode ? 'var(--color-accent)' : 'var(--color-surface)',
+              color: askMode ? '#fff' : 'var(--color-muted)',
+              border: '1px solid var(--color-border)', transition: 'all 0.2s',
+            }}
+          >
+            {askMode ? '✨ Ask' : '✨ Ask'}
+          </button>
+          <button id="search-btn" type="submit" className="btn btn-ghost" style={{ width: 'auto', padding: '10px 20px' }} disabled={searching || asking}>
+            {searching || asking ? '…' : askMode ? '→' : '🔍'}
           </button>
         </form>
+
+        {/* ── ASK ANSWER PANEL ── */}
+        {askAnswer && (
+          <div style={{
+            background: 'linear-gradient(135deg, #1e1b4b22, #312e8122)',
+            border: '1px solid #6366f144',
+            borderRadius: 12, padding: 20, marginBottom: 20,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 18 }}>✨</span>
+              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text)' }}>AI Answer</span>
+            </div>
+            <p style={{ margin: '0 0 12px', fontSize: 14, lineHeight: 1.7, color: 'var(--color-text)' }}>
+              {askAnswer.answer}
+            </p>
+            {askAnswer.sources?.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Sources
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {askAnswer.sources.map(s => (
+                    <span key={s._id} style={{
+                      background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                      borderRadius: 6, padding: '4px 10px', fontSize: 12, color: 'var(--color-muted)',
+                    }}>
+                      {s.type === 'link' ? '🔗' : s.type === 'image' ? '🖼️' : s.type === 'pdf' ? '📄' : '📝'} {s.title?.slice(0, 40)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── FILTERS ── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
           {['', 'link', 'image', 'pdf', 'text'].map(t => (
-            <button key={t} onClick={() => { setFilterType(t); setSearchQ(''); }}
+            <button key={t} onClick={() => { setFilterType(t); setSearchQ(''); setAskAnswer(null); }}
               style={{
                 padding: '4px 14px', borderRadius: 999, fontSize: 13, cursor: 'pointer',
                 background: filterType === t ? 'var(--color-accent)' : 'var(--color-surface)',
@@ -289,6 +356,7 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
+
 
         {/* ── WHATSAPP LINK SECTION ── */}
         {!phoneLinked && (
