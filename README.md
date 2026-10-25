@@ -148,7 +148,7 @@ Copy `.env.example` → `.env`. All values are required for full functionality.
 
 ## Deployment
 
-**Live URL:** `https://engram-cont.onrender.com`
+**Live URL:** `https://engram-eont.onrender.com`
 
 **Demo credentials:**
 - Email: `demo@engram.app`
