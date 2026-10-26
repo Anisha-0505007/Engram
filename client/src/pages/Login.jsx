@@ -33,7 +33,7 @@ export default function Login() {
         <h1>Welcome back</h1>
         <p className="subtitle">Sign in to your account</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error" role="alert">{error}</div>}
 
         <form onSubmit={handleSubmit} id="login-form">
           <div className="form-group">
@@ -41,6 +41,7 @@ export default function Login() {
             <input
               id="login-email"
               type="email"
+              autoComplete="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -53,6 +54,7 @@ export default function Login() {
             <input
               id="login-password"
               type="password"
+              autoComplete="current-password"
               placeholder="Your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -60,7 +62,7 @@ export default function Login() {
             />
           </div>
           <button id="login-btn" className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? <span className="spinner" /> : 'Sign in'}
+            {loading ? <><span className="spinner" />Signing in…</> : 'Sign in'}
           </button>
         </form>
 
