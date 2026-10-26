@@ -1,204 +1,171 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api';
+import { DesktopContext } from '../desktop/DesktopContext';
+import DesktopWindow from '../desktop/DesktopWindow';
+import useDesktopWindows from '../desktop/useDesktopWindows';
+import useActivity from '../desktop/useActivity';
+import Spotlight from '../desktop/Spotlight';
+import LibraryWindow from '../desktop/LibraryWindow';
+import SavedItemCard from '../desktop/SavedItemCard';
+import ItemDialog from '../desktop/ItemDialog';
+import { AccountWindow, ConnectWindow, HelpWindow, SearchWindow } from '../desktop/AuxiliaryWindows';
+import { ClassificationNotice, Notifications } from '../desktop/Activity';
+import { emptyFilters, errorMessage, Folder, Icon, itemTitle, sections, titleFor } from '../desktop/shared';
+import Wallpaper from '../desktop/Wallpaper';
+import { dayPeriod } from '../desktop/dayPeriod';
+import WelcomeTour from '../desktop/WelcomeTour';
 
-const message = error => error.response?.data?.error || (error.message === 'File exceeds 10 MB' ? error.message : 'Could not reach the server. Please try again.');
-const icons = { link: '🔗', image: '🖼️', pdf: '📄', text: '📝' };
-
-function ItemCard({ item, onEdit, onDelete, onRetry, onError }) {
-  const [mediaUrl, setMediaUrl] = useState('');
-  const [busy, setBusy] = useState(false);
-  const tags = item.userEdits?.tags ?? item.enrichment?.tags ?? [];
-  const category = item.userEdits?.category ?? item.enrichment?.category;
-  const title = item.enrichment?.title || item.rawText?.slice(0, 80) || (item.type === 'pdf' ? 'Saved PDF' : 'Saved image');
-  const openMedia = async () => {
-    setBusy(true);
-    try { const { data } = await api.get(`/items/${item._id}/media`); setMediaUrl(data.url); }
-    catch (error) { onError(message(error)); }
-    finally { setBusy(false); }
-  };
-  return <article id={`item-${item._id}`} className="item-card">
-    <div className="item-top"><div className="item-heading"><span aria-hidden="true">{icons[item.type]}</span>
-      <h2>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{title}</a> : title}</h2>
-    </div><span className={`status-pill status-${item.status}`}>{item.status}</span></div>
-    <p className="item-summary">{item.enrichment?.summary || item.rawText || 'Content will appear after processing.'}</p>
-    {item.partial && <p className="notice">Page unavailable. Original content is still saved.</p>}
-    <div className="item-tags">{category && <span>{category}</span>}{tags.map(tag => <span key={tag}>#{tag}</span>)}</div>
-    {item.error && <p className="alert alert-error" role="status">{item.error}</p>}
-    {mediaUrl && item.type === 'image' && <img className="media-preview" src={mediaUrl} alt={item.enrichment?.description || title} onError={() => { setMediaUrl(''); onError('Preview expired or unavailable. Click View file to try again.'); }} />}
-    {mediaUrl && <p><a href={mediaUrl} target="_blank" rel="noreferrer">Open {item.type === 'pdf' ? 'PDF' : 'image'} in a new tab ↗</a></p>}
-    {item.enrichment?.extractedText && <details><summary>Extracted text</summary><p className="extracted-text">{item.enrichment.extractedText}</p></details>}
-    <div className="item-footer"><time>{new Date(item.originalTimestamp || item.createdAt).toLocaleString('en-IN')}</time>
-      <div className="item-actions">
-        {item.media?.key && <button disabled={busy} onClick={openMedia}>{busy ? 'Loading…' : 'View file'}</button>}
-        {['failed', 'done'].includes(item.status) && <button onClick={() => onRetry(item._id)}>{item.status === 'failed' ? 'Retry' : 'Reprocess'}</button>}
-        <button onClick={() => onEdit(item)}>Edit</button>
-        <button onClick={() => onDelete(item._id)}>Delete</button>
-      </div>
-    </div>
-  </article>;
-}
-
-function EditModal({ item, onClose, onSave }) {
-  const [category, setCategory] = useState(item.userEdits?.category ?? item.enrichment?.category ?? '');
-  const [tags, setTags] = useState((item.userEdits?.tags ?? item.enrichment?.tags ?? []).join(', '));
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const save = async e => {
-    e.preventDefault(); setSaving(true); setError('');
-    try { await onSave(item._id, { category, tags: [...new Set(tags.split(',').map(t => t.trim()).filter(Boolean))] }); onClose(); }
-    catch (err) { setError(message(err)); }
-    finally { setSaving(false); }
-  };
-  return <div className="modal-backdrop"><form className="edit-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-title" onSubmit={save} onKeyDown={e => { if (e.key === 'Escape' && !saving) onClose(); }}>
-    <h2 id="edit-title">Edit saved item</h2><p>Your changes stay when AI processes this item again.</p>
-    {error && <div className="alert alert-error" role="alert">{error}</div>}
-    <label>Category<input value={category} maxLength={80} onChange={e => setCategory(e.target.value)} autoFocus /></label>
-    <label>Tags, separated by commas<input value={tags} onChange={e => setTags(e.target.value)} /></label>
-    <div className="dialog-actions"><button type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="btn" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div>
-  </form></div>;
-}
-
+const initialSearch = { items: [], sources: [], answer: '', query: '', busy: false, error: '', warnings: [] };
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [welcome] = useState(() => Boolean(location.state?.welcome));
+  const [tour, setTour] = useState(false);
+  const welcomed = useRef(false);
   const [user, setUser] = useState(null);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [warnings, setWarnings] = useState([]);
-  const [quickAdd, setQuickAdd] = useState('');
-  const [file, setFile] = useState(null);
-  const fileRef = useRef(null);
-  const [adding, setAdding] = useState(false);
+  const [identityError, setIdentityError] = useState('');
+  const [version, setVersion] = useState(0);
+  const [selected, setSelected] = useState('all');
   const [query, setQuery] = useState('');
-  const [askMode, setAskMode] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const [answer, setAnswer] = useState(null);
-  const [view, setView] = useState('timeline');
-  const [filters, setFilters] = useState({ type: '', dateFrom: '', dateTo: '', category: '', status: '' });
-  const [cursor, setCursor] = useState(null);
-  const [editItem, setEditItem] = useState(null);
-  const [linkCode, setLinkCode] = useState(null);
-  const requestVersion = useRef(0);
-
-  const params = useCallback(() => Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), [filters]);
+  const [mode, setMode] = useState('search');
+  const [filterSets, setFilterSets] = useState({});
+  const [searches, setSearches] = useState({ search: initialSearch, ask: initialSearch });
+  const [searchHost, setSearchHost] = useState(null);
+  const [source, setSource] = useState(null);
+  const [dialog, setDialog] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [removed, setRemoved] = useState(new Set());
+  const [protectedItems, setProtectedItems] = useState(new Set());
+  const [unlockUntil, setUnlockUntil] = useState(0);
+  const [vaultExpired, setVaultExpired] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const searchRef = useRef(null);
+  const generations = useRef({ search: 0, ask: 0 });
+  const desktop = useDesktopWindows(user?.userId, welcome ? 'connect' : undefined);
+  useEffect(() => {
+    if (!user?.userId || !welcome || welcomed.current) return;
+    welcomed.current = true;
+    setTour(true);
+    // Consume the signup marker so refreshing the page does not restart the tour.
+    navigate('/dashboard', { replace: true, state: null });
+  }, [user?.userId, welcome, navigate]);
+  const activity = useActivity(user?.userId, version);
+  const unlocked = unlockUntil > now;
+  const notice = useCallback((text, error = false) => setToast({ text, error }), []);
+  const invalidate = useCallback(() => setVersion(value => value + 1), []);
   const loadIdentity = useCallback(async () => {
-    try { const { data } = await api.get('/auth/me'); setUser(data); }
-    catch (err) { if (err.response?.status === 401) navigate('/login'); else setError(message(err)); }
+    try { const { data } = await api.get('/auth/me', { timeout: 15000 }); setUser(data); setIdentityError(''); }
+    catch (err) { if (err.response?.status === 401) navigate('/login'); else setIdentityError(errorMessage(err)); }
   }, [navigate]);
   useEffect(() => { loadIdentity(); }, [loadIdentity]);
-
-  const loadItems = useCallback(async (nextCursor = null, quiet = false) => {
-    const version = ++requestVersion.current;
-    if (!quiet) setLoading(true);
+  useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 6000); return () => clearTimeout(timer); } }, [toast]);
+  useEffect(() => {
+    const keyboard = event => {
+      if (event.key === '/' && !event.ctrlKey && !event.metaKey && !document.querySelector('dialog[open]') && !event.target.closest('input, textarea, select, [contenteditable="true"]')) { event.preventDefault(); searchRef.current?.focus(); }
+      if (event.key === 'Escape') document.querySelectorAll('.menubar-menu[open]').forEach(menu => { menu.removeAttribute('open'); menu.querySelector('summary').focus(); });
+    };
+    const outside = event => document.querySelectorAll('.menubar-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.removeAttribute('open'); });
+    window.addEventListener('keydown', keyboard); document.addEventListener('pointerdown', outside);
+    return () => { window.removeEventListener('keydown', keyboard); document.removeEventListener('pointerdown', outside); };
+  }, []);
+  const clearVault = useCallback(expired => {
+    setUnlockUntil(0); setVaultExpired(expired);
+    setDialog(current => current?.item?.confidential ? null : current);
+    setSource(current => current?.confidential ? null : current);
+  }, []);
+  useEffect(() => {
+    const tick = () => { const time = Date.now(); setNow(time); if (unlockUntil && time >= unlockUntil) clearVault(true); };
+    const timer = setInterval(tick, unlockUntil ? 1000 : 30000);
+    const expiry = unlockUntil ? setTimeout(tick, Math.max(0, unlockUntil - Date.now())) : null;
+    const focus = async () => {
+      tick();
+      if (unlockUntil) { try { const { data } = await api.get('/vault'); if (!data.unlocked) clearVault(true); } catch { clearVault(true); } }
+    };
+    window.addEventListener('focus', focus); document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(timer); clearTimeout(expiry); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', tick); };
+  }, [unlockUntil, clearVault]);
+  const unlock = async password => { await api.post('/vault/unlock', { password }); const time = Date.now(); setNow(time); setUnlockUntil(time + 300000); setVaultExpired(false); };
+  const lock = async () => { clearVault(false); try { await api.post('/vault/lock'); } catch (err) { notice(errorMessage(err), true); } };
+  const signOut = async () => { try { await api.post('/auth/logout'); clearVault(false); navigate('/login'); } catch (err) { notice(errorMessage(err), true); } };
+  const open = (id, keepSearch = false) => {
+    const viewingPrivate = desktop.active === 'confidential' || (desktop.active === 'source' && source?.confidential);
+    // Opening a private item's detail is still part of the unlocked Confidential view.
+    if (viewingPrivate && !['confidential', 'source'].includes(id)) lock();
+    if (!keepSearch && id === searchHost) setSearchHost(null);
+    setSelected(id); desktop.open(id);
+    if (innerWidth < 768) window.scrollTo(0, 0);
+  };
+  const home = () => { desktop.home(); window.scrollTo(0, 0); };
+  const close = id => { if (id === 'confidential' || (id === 'source' && source?.confidential)) lock(); if (id === 'source') setSource(null); if (id === searchHost) setSearchHost(null); desktop.close(id); searchRef.current?.focus(); };
+  const openSource = item => { setSource(item); open('source'); };
+  const forgetSearchItem = id => setSearches(current => Object.fromEntries(Object.entries(current).map(([key, value]) => {
+    const affected = value.items?.some(item => item._id === id);
+    return [key, { ...value, items: value.items?.filter(item => item._id !== id), sources: value.sources?.filter(item => item._id !== id), ...(affected && key === 'ask' ? { answer: '', error: 'A source changed. Ask again to refresh this answer.' } : {}) }];
+  })));
+  const hideItem = id => { setProtectedItems(current => new Set([...current, id])); setSource(current => current?._id === id ? null : current); forgetSearchItem(id); };
+  const removeItem = id => { setRemoved(current => new Set([...current, id])); setSource(current => current?._id === id ? null : current); forgetSearchItem(id); };
+  const filterTarget = sections.some(section => section.id === desktop.active && section.id !== 'confidential') ? desktop.active : 'search';
+  const filters = filterSets[filterTarget] || emptyFilters;
+  const setFilters = value => setFilterSets(current => ({ ...current, [filterTarget]: value }));
+  const submit = async (requestedMode = mode, requestedQuery = query, requestedFilters = filters) => {
+    if (!requestedQuery.trim()) { searchRef.current?.focus(); return; }
+    if (requestedFilters.dateFrom && requestedFilters.dateTo && requestedFilters.dateFrom > requestedFilters.dateTo) { notice('Saved from must be before saved through.', true); return; }
+    const id = requestedMode === 'ask' ? 'ask' : 'search';
+    const request = ++generations.current[id];
+    setSearches(current => ({ ...current, [id]: { ...initialSearch, query: requestedQuery, filters: requestedFilters, busy: true } }));
+    const host = id === 'search' && sections.some(section => section.id === desktop.active && section.id !== 'confidential') ? desktop.active : id;
+    if (id === 'search') setSearchHost(host);
+    open(host, true);
     try {
-      const { data } = await api.get('/items', { params: { ...params(), limit: 15, ...(nextCursor ? { cursor: nextCursor } : {}) } });
-      if (version !== requestVersion.current) return;
-      setItems(prev => nextCursor ? [...prev, ...data.items] : data.items);
-      setCursor(data.nextCursor);
-    } catch (err) { if (version === requestVersion.current) setError(message(err)); }
-    finally { if (version === requestVersion.current && !quiet) setLoading(false); }
-  }, [params]);
-  useEffect(() => { if (view === 'timeline' && user) loadItems(); }, [loadItems, view, user?.userId]);
-  useEffect(() => {
-    // Do not replace a search or a multi-page timeline during background refresh.
-    if (view !== 'timeline' || items.length > 15 || !items.some(i => ['pending', 'processing'].includes(i.status))) return;
-    const timer = setInterval(() => loadItems(null, true), 5000);
-    return () => clearInterval(timer);
-  }, [items, view, loadItems]);
-  useEffect(() => {
-    if (!linkCode || user?.whatsappPhone) return;
-    const timer = setInterval(loadIdentity, 5000);
-    return () => clearInterval(timer);
-  }, [linkCode, user?.whatsappPhone, loadIdentity]);
-
-  const runAction = async fn => {
-    setError(''); setSuccess('');
-    try { await fn(); } catch (err) { setError(message(err)); }
+      const params = { ...Object.fromEntries(Object.entries(requestedFilters).filter(([key, value]) => key !== 'status' && value)), q: requestedQuery, section: 'all', timezone: 'Asia/Kolkata' };
+      const { data } = id === 'ask' ? await api.post('/items/ask', params, { timeout: 120000 }) : await api.get('/items/search', { params, timeout: 120000 });
+      if (request === generations.current[id]) setSearches(current => ({ ...current, [id]: { ...data, query: requestedQuery, filters: requestedFilters, busy: false, error: '' } }));
+    } catch (err) { if (request === generations.current[id]) setSearches(current => ({ ...current, [id]: { ...current[id], busy: false, error: errorMessage(err) } })); }
   };
-  const handleAdd = e => {
-    e.preventDefault();
-    runAction(async () => {
-      if (!quickAdd.trim() && !file) return;
-      setAdding(true);
-      try {
-        if (file) {
-          if (file.size > 10 * 1024 * 1024) throw new Error('File exceeds 10 MB');
-          const data = await new Promise((resolve, reject) => {
-            const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file);
-          });
-          await api.post('/items/upload', { data, mime: file.type, caption: quickAdd });
-        } else await api.post('/items', { text: quickAdd });
-        setQuickAdd(''); setFile(null); if (fileRef.current) fileRef.current.value = '';
-        setSuccess('Saved. Processing in the background.'); setAnswer(null); setView('timeline'); await loadItems();
-      } finally { setAdding(false); }
-    });
+  const updateItem = item => {
+    setSource(current => current?._id === item._id ? item : current);
+    setSearches(current => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, {
+      ...value, items: (value.items || []).map(saved => saved._id === item._id ? item : saved),
+      sources: (value.sources || []).map(saved => saved._id === item._id ? { ...saved, title: itemTitle(item) } : saved),
+    }])));
   };
-  const handleSearch = e => {
-    e.preventDefault();
-    runAction(async () => {
-      if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) { setError('Start date must be before end date.'); return; }
-      if (!query.trim() && !askMode) { setView('timeline'); setAnswer(null); setWarnings([]); return loadItems(); }
-      if (!query.trim()) { setError('Enter a question first.'); return; }
-      const version = ++requestVersion.current;
-      setAsking(true); setAnswer(null); setWarnings([]);
-      try {
-        const searchParams = { ...params(), q: query }; delete searchParams.status;
-        const { data } = askMode ? await api.post('/items/ask', searchParams) : await api.get('/items/search', { params: searchParams });
-        if (version !== requestVersion.current) return;
-        setItems(data.items || []); setCursor(null); setWarnings(data.warnings || []);
-        setView('search'); if (askMode) setAnswer(data);
-      } finally { setAsking(false); setLoading(false); }
-    });
+  const startTour = () => { open('connect'); setTour(true); };
+  const context = { user, activity, loadIdentity, version, invalidate, notice, open, openSource, setDialog, updateItem, startTour, signOut, removed, protectedItems, removeItem, hideItem, unlocked, unlockUntil, vaultExpired, now, unlock, lock };
+  const chooseMenu = (event, action) => { event.currentTarget.closest('details')?.removeAttribute('open'); action(); };
+  const date = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short' }).format(now);
+  const period = dayPeriod(now);
+  const clock = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' }).format(now);
+  const renderWindow = id => {
+    if (sections.some(section => section.id === id)) {
+      if (id === searchHost) return <><button className="back-to-library" onClick={() => setSearchHost(null)}>Back to {titleFor(id)}</button><SearchWindow state={searches.search} retry={() => submit('search', searches.search.query, searches.search.filters)}/></>;
+      return <><ClassificationNotice/><LibraryWindow section={id} filters={filterSets[id] || emptyFilters}/></>;
+    }
+    if (id === 'connect') return <ConnectWindow/>;
+    if (id === 'account') return <AccountWindow/>;
+    if (id === 'help') return <HelpWindow/>;
+    if (id === 'search' || id === 'ask') return <SearchWindow state={searches[id]} ask={id === 'ask'} retry={() => submit(id, searches[id].query, searches[id].filters)}/>;
+    if (id === 'source' && source && (!source.confidential || unlocked)) return <SavedItemCard key={source._id} item={source} full/>;
+    return <p className="footnote">Open a saved item from your library.</p>;
   };
-  const retry = id => runAction(async () => { await api.post(`/items/${id}/retry`); setSuccess('Queued for processing.'); setItems(prev => prev.map(item => item._id === id ? { ...item, status: 'pending', error: null } : item)); });
-  const remove = id => {
-    if (!confirm('Delete this item and its stored file?')) return;
-    runAction(async () => { await api.delete(`/items/${id}`); setItems(prev => prev.filter(item => item._id !== id)); setSuccess('Item deleted.'); });
-  };
-  const saveEdit = async (id, edits) => { const { data } = await api.patch(`/items/${id}`, edits); setItems(prev => prev.map(item => item._id === id ? data : item)); setSuccess('Changes saved.'); };
-  const changeFilter = (key, value) => { requestVersion.current++; setFilters(prev => ({ ...prev, [key]: value })); setView('timeline'); setAnswer(null); setWarnings([]); };
-
-  return <div className="dashboard">
-    <header className="dashboard-header"><div className="brand"><div className="brand-dot" /><span className="brand-name">Engram</span></div>
-      <div className="header-actions"><span>{user?.email}</span><button className="btn btn-ghost" onClick={() => runAction(async () => { await api.post('/auth/logout'); navigate('/login'); })}>Sign out</button></div>
-    </header>
-    <main className="workspace">
-      <div className="workspace-intro"><h1>Your saved things, found again.</h1><p>Save a note, link, screenshot or PDF. Search by meaning when you need it.</p></div>
-      {error && <div className="alert alert-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}>×</button></div>}
-      {success && <div className="alert alert-success" role="status">{success}</div>}
-      {warnings.map(warning => <div className="notice" role="status" key={warning}>{warning}</div>)}
-      <section className="capture-panel" aria-labelledby="save-title"><h2 id="save-title">Save something</h2>
-        <form onSubmit={handleAdd}><textarea id="quick-add-input" value={quickAdd} maxLength={20000} onChange={e => setQuickAdd(e.target.value)} placeholder="Paste a link, write a note, or add a caption to your file…" aria-label="Note, link or caption" />
-          <div className="capture-actions"><label className="file-label">Attach image or PDF<input ref={fileRef} id="file-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => {
-            const selected = e.target.files?.[0];
-            if (selected?.size > 10 * 1024 * 1024) { setError('Choose a file smaller than 10 MB.'); e.target.value = ''; return; }
-            setFile(selected || null);
-          }} /></label><button id="quick-add-btn" className="btn" disabled={adding || (!quickAdd.trim() && !file)}>{adding ? 'Saving…' : 'Save'}</button></div>
-          <p className="field-hint">{file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'JPEG, PNG, WebP or PDF · up to 10 MB · stored privately'}</p>
-        </form>
-      </section>
-      <section className="search-panel" aria-label="Search saved items"><form onSubmit={handleSearch} className="search-row"><input id="search-input" value={query} maxLength={500} onChange={e => setQuery(e.target.value)} placeholder={askMode ? 'Ask a question about your saved items…' : 'Try “wifi screenshot” or “links from August”…'} aria-label="Search query" />
-        <button id="ask-toggle-btn" type="button" className={askMode ? 'mode-active' : ''} aria-pressed={askMode} onClick={() => { setAskMode(!askMode); setAnswer(null); }}>Ask AI</button>
-        <button id="search-btn" className="btn" disabled={asking}>{asking ? 'Searching…' : askMode ? 'Ask' : 'Search'}</button></form>
-        <div className="filters"><label>Type<select value={filters.type} onChange={e => changeFilter('type', e.target.value)}><option value="">All types</option>{['link', 'image', 'pdf', 'text'].map(type => <option key={type}>{type}</option>)}</select></label>
-          <label>From<input type="date" value={filters.dateFrom} onChange={e => changeFilter('dateFrom', e.target.value)} /></label><label>To<input type="date" value={filters.dateTo} onChange={e => changeFilter('dateTo', e.target.value)} /></label>
-          <label>Category<input value={filters.category} maxLength={80} placeholder="Any category" onChange={e => changeFilter('category', e.target.value)} /></label>
-          <label>Status<select value={filters.status} onChange={e => changeFilter('status', e.target.value)}><option value="">All statuses</option>{['pending', 'processing', 'done', 'failed'].map(status => <option key={status}>{status}</option>)}</select></label>
-        </div><p className="field-hint">Dates use UTC. Status applies to the timeline; search and Ask use type, date and category.</p>
-      </section>
-      <section className="whatsapp-panel"><div><strong>{user?.whatsappPhone ? `WhatsApp linked: ${user.whatsappPhone}` : 'Save straight from WhatsApp'}</strong><p>Forward to the Engram business number. Test mode requires your number to be whitelisted.</p></div>
-        {!user?.whatsappPhone && <div>{linkCode && <p className="link-code">{linkCode}<small>Send this code to the bot within 10 minutes.</small></p>}<button id="link-whatsapp-btn" onClick={() => runAction(async () => { const { data } = await api.post('/auth/link-code'); setLinkCode(data.code); })}>{linkCode ? 'New code' : 'Get Link Code'}</button></div>}
-      </section>
-      {answer && <section className="answer-panel"><h2>Answer from your saved items</h2><p>{answer.answer}</p><div className="source-links">{answer.sources?.map(source => <a key={source._id} href={`#item-${source._id}`}>{source.title}</a>)}</div></section>}
-      <div className="results-heading"><h2>{view === 'search' ? 'Search results' : 'Your timeline'}</h2><button onClick={() => { setView('timeline'); setQuery(''); setAnswer(null); setWarnings([]); loadItems(); }}>Refresh timeline</button></div>
-      {loading && <p role="status">Loading saved items…</p>}
-      {!loading && !items.length && <div className="empty-state"><h2>{error ? 'Could not load your items' : view === 'search' ? 'No matching items' : 'Nothing saved here yet'}</h2><p>{view === 'search' ? 'Try fewer words or a wider date range.' : 'Save a note, link or file above, or adjust your filters.'}</p><button onClick={() => loadItems()}>Try again</button></div>}
-      <div className="items-list">{items.map(item => <ItemCard key={item._id} item={item} onEdit={setEditItem} onDelete={remove} onRetry={retry} onError={setError} />)}</div>
-      {cursor && view === 'timeline' && <button className="btn load-more" disabled={loading} onClick={() => loadItems(cursor)}>{loading ? 'Loading…' : 'Load more'}</button>}
-      <p className="field-hint">Pending items on the first timeline page refresh every 5 seconds.</p>
-    </main>
-    {editItem && <EditModal item={editItem} onClose={() => setEditItem(null)} onSave={saveEdit} />}
-  </div>;
+  return <DesktopContext.Provider value={context}><div data-period={period} className={`engram-desktop ${desktop.active && !desktop.windows[desktop.active]?.minimized ? 'desktop-has-window' : ''} ${desktop.active === 'connect' && !desktop.windows.connect?.minimized ? 'desktop-connecting' : ''}`}>
+    <Wallpaper/>
+    <header className="menu-bar"><a className="menu-brand" href="/dashboard" onClick={event => { event.preventDefault(); home(); }}>Engram</a><nav aria-label="Application menu">
+      <details className="menubar-menu"><summary>File</summary><div className="dropdown"><button onClick={event => chooseMenu(event, () => open('all'))}>Open library</button><button onClick={event => chooseMenu(event, invalidate)}>Refresh windows</button><button disabled={!desktop.active} onClick={event => chooseMenu(event, () => close(desktop.active))}>Close window</button></div></details>
+      <details className="menubar-menu"><summary>View</summary><div className="dropdown"><button onClick={event => chooseMenu(event, home)}>Desktop / Home</button>{sections.map(section => <button key={section.id} onClick={event => chooseMenu(event, () => open(section.id))}>{section.title}</button>)}</div></details>
+      <button onClick={() => open('connect')}>Connect</button><button onClick={() => open('help')}>Help</button>
+    </nav><div className="menu-right"><span className="timezone-label"><span className="period-indicator"/>{period} · IST</span><details className="menubar-menu account-menu"><summary aria-label="Account menu">{user?.email || 'Your account'}<Icon name="chevron" size={11}/></summary><div className="dropdown"><span className="menu-identity">{user?.email}</span><button onClick={event => chooseMenu(event, () => open('account'))}>Account details</button><button onClick={event => chooseMenu(event, signOut)}>Sign out</button></div></details><time dateTime={new Date(now).toISOString()}><span>{date}</span><strong>{clock}</strong></time></div></header>
+    <Spotlight inputRef={searchRef} query={query} setQuery={setQuery} mode={mode} setMode={setMode} filters={filters} setFilters={setFilters} onSubmit={() => submit()} busy={searches[mode === 'ask' ? 'ask' : 'search'].busy} timeline={desktop.active !== searchHost && sections.some(section => section.id === desktop.active && section.id !== 'confidential')}/>
+    {user && <Notifications/>}
+    <nav className="folder-rail" aria-label="Library folders">{sections.map(section => <button key={section.id} className={`desktop-folder folder-${section.id} ${selected === section.id ? 'folder-selected' : ''}`} aria-label={`Open ${section.title}`} aria-pressed={selected === section.id} onClick={() => open(section.id)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); open(section.id); } }}><Folder icon={section.icon} locked={section.id === 'confidential'}/><span>{section.title}</span>{section.id === 'confidential' && <small>{unlocked ? 'Unlocked' : 'Locked'}</small>}</button>)}</nav>
+    <div className="desktop-welcome" aria-hidden="true"><span>YOUR PERSONAL MEMORY.</span><p>Saved in a moment.<br/>Found when it matters.</p><small>Your notes, links and documents. Together, and easy to find.</small></div>
+    {!user && <div className="desktop-loading" role="status">{identityError ? <><p>{identityError}</p><button onClick={loadIdentity}>Try again</button></> : <><span className="spinner"/>Opening your library…</>}</div>}
+    {user && Object.entries(desktop.windows).map(([id, record]) => <DesktopWindow key={id} id={id} title={id === searchHost ? 'Search results' : titleFor(id)} record={record} active={desktop.active === id} onFocus={desktop.focus} onClose={close} onMove={desktop.move} onMinimize={desktop.minimize} onMaximize={desktop.maximize} onToggleTheme={desktop.toggleTheme}>
+      {renderWindow(id)}
+    </DesktopWindow>)}
+    <nav className="desktop-dock" aria-label="Application dock"><button className="dock-button mobile-home" aria-label="Home" onClick={home}><Icon name="home" size={24}/><span className="dock-tooltip">Home</span></button>{sections.map(section => <button key={section.id} className={`dock-button dock-${section.id} ${desktop.active === section.id ? 'dock-active' : ''}`} aria-label={section.title} aria-current={desktop.active === section.id ? 'page' : undefined} onClick={() => open(section.id)}><Icon name={section.icon} size={25}/><span className="dock-tooltip">{section.title}</span>{desktop.windows[section.id] && <span className="dock-dot"/>}{section.id === 'upcoming' && activity.reminders.length > 0 && <span className="dock-badge">{activity.reminders.length}</span>}</button>)}<span className="dock-divider"/>{[['connect', 'connect'], ['account', 'account']].map(([id, icon]) => <button key={id} className="dock-button" aria-label={id === 'connect' ? 'Connect WhatsApp' : 'Account'} onClick={() => open(id)}><Icon name={icon} size={24}/><span className="dock-tooltip">{id === 'connect' ? 'Connect' : 'Account'}</span></button>)}</nav>
+    {toast && <div className={`desktop-toast ${toast.error ? 'toast-error' : ''}`} role={toast.error ? 'alert' : 'status'}><Icon name={toast.error ? 'bell' : 'check'} size={18}/><span>{toast.text}</span><button aria-label="Dismiss message" onClick={() => setToast(null)}><Icon name="close" size={15}/></button></div>}
+    {dialog && (!dialog.item.confidential || unlocked) && <ItemDialog key={`${dialog.kind}:${dialog.item._id}`} {...dialog} dark={Boolean(desktop.windows[desktop.active]?.dark)} onClose={() => setDialog(null)}/>}
+    {tour && <WelcomeTour onClose={() => setTour(false)}/>}
+  </div></DesktopContext.Provider>;
 }

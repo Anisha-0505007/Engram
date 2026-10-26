@@ -16,7 +16,7 @@ const owners = [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId()];
 let storageKey;
 async function verifyAtlas() {
   const vector = Array.from({ length: 768 }, (_, i) => i === 0 ? 1 : 0);
-  const base = { source: 'web', status: 'done', rawText: 'Engram verification fixture', searchText: 'Engram verification fixture',
+  const base = { source: 'web', status: 'done', privacyPending: false, rawText: 'Engram verification fixture', searchText: 'Engram verification fixture',
     embedding: vector, embeddingModel: EMBEDDING_MODEL, effectiveCategory: 'verification', originalTimestamp: new Date('2026-10-20T12:00:00Z') };
   const fixtures = await Item.insertMany([
     { ...base, userId: owners[0], type: 'pdf' },
@@ -24,6 +24,11 @@ async function verifyAtlas() {
     { ...base, userId: owners[0], type: 'text' },
     { ...base, userId: owners[0], type: 'pdf', originalTimestamp: new Date('2026-01-01') },
   ]);
+  // Keep synthetic stale vectors on protected fixtures to prove the index pre-filter.
+  for (const flags of [{ confidential: true }, { privacyPending: true }]) {
+    const inserted = await Item.collection.insertOne({ ...base, userId: owners[0], type: 'pdf', ...flags });
+    fixtures.push({ _id: inserted.insertedId });
+  }
   const filter = buildFilter(owners[0], { type: 'pdf', dateFrom: '2026-10-01', dateTo: '2026-10-25' });
   filter.embeddingModel = EMBEDDING_MODEL;
   filter.effectiveCategory = 'verification';
@@ -31,6 +36,7 @@ async function verifyAtlas() {
     const [vectorMatches, textMatches] = await Promise.all([
       Item.aggregate([{ $vectorSearch: { index: 'vector_index', path: 'embedding', queryVector: vector, numCandidates: 100, limit: 10, filter } }]),
       Item.aggregate([{ $search: { index: 'text_index', compound: {
+        mustNot: [{ equals: { path: 'confidential', value: true } }, { equals: { path: 'privacyPending', value: true } }],
         filter: [{ equals: { path: 'userId', value: owners[0] } }, { equals: { path: 'type', value: 'pdf' } },
           { range: { path: 'originalTimestamp', gte: new Date('2026-10-01'), lt: new Date('2026-10-26') } },
           { equals: { path: 'effectiveCategory', value: 'verification' } }],
@@ -40,7 +46,7 @@ async function verifyAtlas() {
     const ownIds = new Set(fixtures.map(item => String(item._id)));
     const matches = [vectorMatches, textMatches].map(list => list.filter(item => ownIds.has(String(item._id))));
     if (matches.every(list => list.length === 1 && String(list[0]._id) === String(fixtures[0]._id))) {
-      console.log('PASS: real Atlas text and vector indexes enforce owner, type, date and category filters');
+      console.log('PASS: real Atlas text and vector indexes enforce owner, type, date, category and privacy filters');
       console.log('Synthetic vectors verify filtering only, not semantic relevance.');
       return;
     }
@@ -77,7 +83,7 @@ try {
     const searchText = [data.title, data.summary, data.extractedText].join(' ');
     const embedding = await withAiUser(owners[0], () => embedText(searchText));
     pdf = await Item.create({ userId: owners[0], source: 'web', type: 'pdf', status: 'done',
-      enrichment: { ...data, model: LLM_MODEL }, searchText, embedding, embeddingModel: EMBEDDING_MODEL,
+      enrichment: { ...data, model: LLM_MODEL }, privacyPending: false, searchText, embedding, embeddingModel: EMBEDDING_MODEL,
       effectiveCategory: data.category });
   } else {
   storageKey = await uploadFile(buffer, `${owners[0]}/verification.pdf`, 'application/pdf');
@@ -92,7 +98,7 @@ try {
   }
   const enriched = await Item.findOne({ _id: pdf._id, userId: owners[0] });
   if (enriched.status !== 'done' || !enriched.enrichment.extractedText?.includes('100') || enriched.embedding?.length !== 768) throw new Error('PDF enrichment did not meet acceptance criteria');
-  console.log('PASS: live Gemini PDF extraction and 768-dimensional embedding');
+  console.log('PASS: live Cloudflare PDF extraction and 768-dimensional embedding');
   const foreign = await Item.create({ userId: owners[1], source: 'web', type: 'pdf', rawText: 'foreign verification',
     embedding: enriched.embedding, embeddingModel: enriched.embeddingModel, effectiveCategory: enriched.effectiveCategory, searchText: enriched.searchText });
   const indexes = await mongoose.connection.db.collection('items').listSearchIndexes().toArray();

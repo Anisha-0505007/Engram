@@ -15,7 +15,7 @@ export const register = async (req, res) => {
 
     // Sign a JWT with the userId so we can identify the user on future requests.
     // The secret must stay in .env — anyone with the secret can forge tokens.
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d', jwtid: crypto.randomUUID() });
 
     // httpOnly: JS cannot read the cookie (blocks XSS token theft)
     // secure: only sent over HTTPS (enforced in production)
@@ -44,7 +44,7 @@ export const login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d', jwtid: crypto.randomUUID() });
 
     res.cookie('token', token, {
       httpOnly: true,
@@ -61,6 +61,7 @@ export const login = async (req, res) => {
 
 export const logout = (_req, res) => {
   res.clearCookie('token');
+  res.clearCookie('engramVault', { path: '/api' });
   res.json({ message: 'Logged out successfully' });
 };
 

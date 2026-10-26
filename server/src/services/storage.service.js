@@ -42,12 +42,12 @@ export const uploadFile = async (buffer, filename, contentType) => {
  * @param {string} storageKey - The path of the file in the bucket
  * @returns {Promise<string>} The temporary URL
  */
-export const getPresignedUrl = async (storageKey) => {
+export const getPresignedUrl = async (storageKey, expiresIn = 3600) => {
   if (!supabase) return null;
 
   const { data, error } = await supabase.storage
     .from(BUCKET_NAME)
-    .createSignedUrl(storageKey, 3600); // 3600 seconds = 1 hour
+    .createSignedUrl(storageKey, expiresIn);
 
   if (error) {
     return null;

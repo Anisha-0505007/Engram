@@ -12,10 +12,14 @@ Students and young professionals, initially classmates and hostel mates.
 Users send content to Engram's business number or use Web Quick Add. Express saves it, a Mongo-backed worker enriches it, and a private timeline supports keyword/semantic search and grounded Q&A.
 
 ## Key Features
+- Links, Upcoming, Photos and password-unlocked Confidential sections; protected items are excluded from AI search and answers.
+- Evidence-backed event dates and in-app reminders in the final 24 hours, urgent within one hour; original-message date filters use India time in the web app.
+- Image transcription followed by text enrichment provides searchable visual subjects and deadline extraction. New and older files are classified automatically through the worker, with no manual review. Mark private uploads confidential before saving to skip AI.
+- **Optional personal WhatsApp connector:** a local, unofficial Baileys adapter was requested on 26 Oct after Meta account restrictions blocked setup. See [connector setup and limitations](connector/README.md). Baileys 7.0.0-rc14 is installed and pinned; parser/outbox and backend capture tests pass, but live pairing remains unverified. This is an explicit change to the original official-API-only scope.
 - Register/login/logout with bcrypt and JWT in httpOnly cookies; user-scoped item access.
 - Signed Meta webhooks, batched message parsing, duplicate item/job protection and queued bot acknowledgements.
 - Web capture for notes, links, JPEG/PNG/WebP images and PDFs up to 10 MB.
-- Background link analysis, image OCR and PDF extraction through Gemini, with validated JSON, one repair retry, embeddings and visible failure/retry states.
+- Background link analysis, image OCR and PDF extraction through Cloudflare Workers AI, with validated JSON, one repair retry, embeddings and visible failure/retry states.
 - Atlas Search and Vector Search combined with RRF; type/date/category filters and explicit fallback warnings.
 - Timeline status filters, stable cursor pagination, private media viewing, editable tags/category and deletion with storage cleanup.
 - Per-user daily AI-call budget, worker backoff, terminal failure state and stuck-job recovery.
@@ -23,7 +27,7 @@ Users send content to Engram's business number or use Web Quick Add. Express sav
 These features depend on valid external configuration. See the release verification status below; implementation does not establish live provider success.
 
 ## Tech Stack
-React 18/Vite, Node.js/Express 5, Mongoose/MongoDB Atlas, Supabase private object storage, Meta WhatsApp Cloud API and Gemini REST API. Native Node test runner; no new dependencies were required for the reliability changes.
+React 18/Vite, Node.js/Express 5, Mongoose/MongoDB Atlas, Supabase private object storage, Meta WhatsApp Cloud API and Cloudflare Workers AI REST API. Native Node test runner; no new dependencies were required for the reliability changes.
 
 ## Architecture
 ```mermaid
@@ -33,7 +37,7 @@ flowchart LR
   Web[React web app] --> API
   API --> DB[(MongoDB Atlas)]
   Worker[Worker in same process] -->|Atomic claim| DB
-  Worker --> Gemini[Gemini API]
+  Worker --> AI[Cloudflare Workers AI]
   Worker --> Storage[Private Supabase bucket]
   Worker -->|Replies| Meta
 ```
@@ -76,6 +80,8 @@ npm run build
 ```
 The optional Postman simulation checks the real AI HTTP client against a local stand-in, not real model quality. Commands are in [the simulation context](postman/simulations/ai-local.context.md). The optional `node scripts/verifyLive.mjs` uses temporary synthetic records and removes them afterward; `--without-storage` skips the upload/download prerequisite.
 
+Backend tests place temporary MongoDB data under the ignored `.cache/test-tmp` directory on the project drive. This avoids relying on the system drive, which was nearly full during verification. Run connector tests separately with `npm test` in `connector/`.
+
 ## Environment Variables
 The full placeholder template is `server/.env.example`. Set secrets in the server environment only.
 
@@ -84,18 +90,17 @@ The full placeholder template is `server/.env.example`. Set secrets in the serve
 | `PORT`, `NODE_ENV` | HTTP port and production cookie behavior |
 | `MONGODB_URI`, `JWT_SECRET` | Atlas connection and JWT signing |
 | `CLIENT_ORIGIN` | Exact Vite origin in development |
-| `GEMINI_API_KEY` | Gemini credential |
-| `GEMINI_MODEL` | Generation model; default `gemini-3.5-flash-lite` |
-| `GEMINI_EMBEDDING_MODEL` | Default `gemini-embedding-001`, fixed 768-dimensional output |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID, 32 hexadecimal characters |
+| `CLOUDFLARE_API_TOKEN` | Server-only Workers AI token |
 | `DAILY_AI_CALL_LIMIT` | Application budget per user per UTC day; default 100, not the provider's quota |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Server-only private media access |
 | `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Webhook signature and GET verification |
 | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Media retrieval and replies |
 | `WHATSAPP_API_VERSION` | Configurable Graph version; default `v23.0`, verify against your Meta app |
 
-`GEMINI_BASE_URL` and `WHATSAPP_BASE_URL` are optional test overrides. Do not point a real credential at an untrusted host. Model availability and provider limits must be checked for the actual project; no fixed free-tier allowance is promised.
+`CLOUDFLARE_BASE_URL` and `WHATSAPP_BASE_URL` are optional test overrides. Do not point a real credential at an untrusted host. Cloudflare is the only AI provider; old provider settings are ignored. Follow [Cloudflare setup](docs/cloudflare-setup.md) for credentials, model terms, free allowance and synthetic verification.
 
-Provider references: [Gemini models](https://ai.google.dev/gemini-api/docs/models), [embeddings](https://ai.google.dev/gemini-api/docs/embeddings), [PDF input](https://ai.google.dev/gemini-api/docs/document-processing), [Meta's message contract](https://www.postman.com/meta/whatsapp-business-platform/folder/o48mro7/messages).
+Provider references: [Cloudflare vision](https://developers.cloudflare.com/workers-ai/models/llama-3.2-11b-vision-instruct/), [embeddings](https://developers.cloudflare.com/workers-ai/models/bge-base-en-v1.5/), [PDF conversion](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/), [Meta's message contract](https://www.postman.com/meta/whatsapp-business-platform/folder/o48mro7/messages).
 
 ## Deployment
 Recorded hosted URL: https://engram-eont.onrender.com. The current local changes must be deployed before that URL serves them; this session has not verified the hosted release or demo credentials.
@@ -112,8 +117,8 @@ Do not publish demo credentials until the account exists and its login has been 
 - Postman AI simulation passed JSON repair, successful enrichment, embeddings, HTTP 429/503 handling and terminal failure behavior.
 - Local app connected to Atlas and served the UI; unauthenticated item requests returned 401.
 - Both Atlas indexes are READY and queryable. A live synthetic-vector check passed owner/type/date/category isolation on text and vector search; this verifies filtering, not semantic relevance.
-- Gemini model metadata lookup returned 200, but actual generation returned **403**. Provider permissions/access must be corrected before live AI features can pass.
-- Local Supabase storage was unconfigured during verification. Private media upload/view/delete remains blocked until configuration is supplied.
+- Gemini previously returned billing errors and Groq returned HTTP 401. Both integrations have been replaced by Cloudflare. Cloudflare local HTTP and Postman simulation tests pass; live account credentials, model access and output quality still need verification using [the setup guide](docs/cloudflare-setup.md).
+- Supabase credentials are configured locally. The private `engram-media` bucket was created and a synthetic PDF upload, signed download and cleanup all passed on 26 Oct.
 - Real WhatsApp delivery/replies, complete hosted workflow, demo video and submission are not verified.
 
 ## Evaluation Results

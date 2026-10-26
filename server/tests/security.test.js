@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isPrivateIp, safeFetch } from '../src/services/urlFetcher.service.js';
-import { reciprocalRankFusion, buildFilter } from '../src/services/search.service.js';
+import { reciprocalRankFusion, buildFilter, keywordTerms, relevantVectorResults, MIN_VECTOR_SCORE } from '../src/services/search.service.js';
 import { QuerySchema } from '../src/services/queryUnderstanding.service.js';
 import { parseStructured, EnrichmentSchema } from '../src/services/llm.service.js';
 import { credentials, listSchema } from '../src/middleware/validate.js';
@@ -31,6 +31,20 @@ test('RRF restarts ranks for each list and rewards overlap', () => {
   const a = { _id: 'a' }, b = { _id: 'b' }, c = { _id: 'c' };
   assert.deepEqual(reciprocalRankFusion([[a, b], [c, b]]).map(x => x._id), ['b', 'a', 'c']);
   assert.deepEqual(reciprocalRankFusion([[a, a], [b]]).map(x => x._id), ['a', 'b']);
+});
+
+test('keyword fallback ignores conversational filler without discarding the subject', () => {
+  assert.equal(keywordTerms('Can you find any internship application links'), 'internship|application|links');
+  assert.equal(keywordTerms('please show me my'), '');
+});
+
+test('hybrid search drops low-confidence semantic neighbors and hides their score metadata', () => {
+  const results = relevantVectorResults([
+    { _id: 'match', vectorScore: MIN_VECTOR_SCORE + 0.05, rawText: 'internship link' },
+    { _id: 'unrelated', vectorScore: MIN_VECTOR_SCORE - 0.05, rawText: 'grocery list' },
+    { _id: 'missing-score', rawText: 'no Atlas score' },
+  ]);
+  assert.deepEqual(results, [{ _id: 'match', rawText: 'internship link' }]);
 });
 test('query schema rejects invalid dates, reversed ranges and invalid types', () => {
   for (const query of [{ text: 'x', dateFrom: '2026-02-30' }, { text: 'x', dateFrom: 'yesterday' }, { text: 'x', type: 'sticker' }, { text: '', dateFrom: '2026-10-20', dateTo: '2026-10-01' }]) assert.equal(QuerySchema.safeParse(query).success, false);

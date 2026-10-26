@@ -17,7 +17,7 @@ export default function Register() {
       await api.post('/auth/register', { email, password });
       // On success, the server sets the auth cookie automatically.
       // We redirect to the dashboard — no need to store a token in JS.
-      navigate('/dashboard');
+      navigate('/dashboard', { state: { welcome: true } });
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');
     } finally {
@@ -35,7 +35,7 @@ export default function Register() {
         <h1>Create account</h1>
         <p className="subtitle">Save anything. Find it by meaning.</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error" role="alert">{error}</div>}
 
         <form onSubmit={handleSubmit} id="register-form">
           <div className="form-group">
@@ -43,6 +43,7 @@ export default function Register() {
             <input
               id="email"
               type="email"
+              autoComplete="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -55,6 +56,7 @@ export default function Register() {
             <input
               id="password"
               type="password"
+              autoComplete="new-password"
               placeholder="Min. 8 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -63,7 +65,7 @@ export default function Register() {
             />
           </div>
           <button id="register-btn" className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? <span className="spinner" /> : 'Create account'}
+            {loading ? <><span className="spinner" />Creating account…</> : 'Create account'}
           </button>
         </form>
 
