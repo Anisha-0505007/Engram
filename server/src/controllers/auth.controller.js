@@ -19,11 +19,12 @@ export const register = async (req, res) => {
 
     // httpOnly: JS cannot read the cookie (blocks XSS token theft)
     // secure: only sent over HTTPS (enforced in production)
-    // sameSite: browser won't send cookie on cross-site requests (blocks CSRF)
+    // Cross-origin Vercel-to-Render requests need SameSite=None; API writes still
+    // validate Origin in app.js, and the browser may require third-party cookies.
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -49,7 +50,7 @@ export const login = async (req, res) => {
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 

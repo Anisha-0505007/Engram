@@ -11,18 +11,24 @@ import vaultRoutes from './routes/vault.routes.js';
 
 export const app = express();
 if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+const allowedClientOrigins = new Set([
+  process.env.CLIENT_ORIGIN,
+  ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173']),
+].filter(Boolean));
 app.use(helmet({ contentSecurityPolicy: {
   directives: { 'img-src': ["'self'", 'data:', 'https:'], 'style-src': ["'self'", "'unsafe-inline'"], 'connect-src': ["'self'"] },
 } }));
-app.use(cors({ origin: process.env.NODE_ENV === 'production' ? false : (process.env.CLIENT_ORIGIN || 'http://localhost:5173'), credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => callback(null, Boolean(origin && allowedClientOrigins.has(origin))),
+  credentials: true,
+}));
 app.use('/webhook/whatsapp', webhookRoutes);
 app.use(cookieParser());
 app.use('/api', (req, res, next) => {
   // CORS alone does not prevent cross-site writes. Enforce the browser's Origin too.
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.headers.origin) {
     // The built UI uses Express's origin in development too; Vite is an additional origin.
-    const allowed = new Set([`${req.protocol}://${req.get('host')}`]);
-    if (process.env.NODE_ENV !== 'production') allowed.add(process.env.CLIENT_ORIGIN || 'http://localhost:5173');
+    const allowed = new Set([`${req.protocol}://${req.get('host')}`, ...allowedClientOrigins]);
     if (!allowed.has(req.headers.origin)) return res.status(403).json({ error: 'Request origin is not allowed' });
   }
   next();

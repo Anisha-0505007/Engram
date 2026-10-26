@@ -87,7 +87,7 @@ export default function Dashboard() {
   }, [unlockUntil, clearVault]);
   const unlock = async password => { await api.post('/vault/unlock', { password }); const time = Date.now(); setNow(time); setUnlockUntil(time + 300000); setVaultExpired(false); };
   const lock = async () => { clearVault(false); try { await api.post('/vault/lock'); } catch (err) { notice(errorMessage(err), true); } };
-  const signOut = async () => { try { await api.post('/auth/logout'); clearVault(false); navigate('/login'); } catch (err) { notice(errorMessage(err), true); } };
+  const signOut = async () => { try { await api.post('/auth/logout'); desktop.closeAll(); clearVault(false); navigate('/login', { state: null }); } catch (err) { notice(errorMessage(err), true); } };
   const open = (id, keepSearch = false) => {
     const viewingPrivate = desktop.active === 'confidential' || (desktop.active === 'source' && source?.confidential);
     // Opening a private item's detail is still part of the unlocked Confidential view.

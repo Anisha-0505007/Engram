@@ -11,7 +11,6 @@ export default function useDesktopWindows(userId, initialSection) {
   const [windows, setWindows] = useState({});
   const [active, setActive] = useState(null);
   const layouts = useRef({});
-  const lastSection = useRef('all');
   const focus = useCallback(id => { setActive(id); setWindows(current => current[id] ? raise(current, id) : current); }, []);
   const open = useCallback(id => {
     if (!allowed.has(id)) return;
@@ -26,23 +25,22 @@ export default function useDesktopWindows(userId, initialSection) {
       return { [id]: { ...next, minimized: false, z: 30 } };
     });
     setActive(id);
-    if (sections.some(section => section.id === id)) lastSection.current = id;
   }, []);
   useEffect(() => {
     if (!userId) return;
     try {
       const saved = JSON.parse(localStorage.getItem(`engram-desktop:${userId}`) || '{}');
       layouts.current = Object.fromEntries(Object.entries(saved.layouts || {}).filter(([id, value]) => allowed.has(id) && value && ['x', 'y', 'height'].every(key => Number.isFinite(value[key]))).map(([id, value]) => [id, { x: value.x, y: value.y, height: value.height, width: Number.isFinite(value.width) ? value.width : undefined, maximized: Boolean(value.maximized), dark: value.dark === true }]));
-      lastSection.current = sections.some(section => section.id === saved.lastSection) ? saved.lastSection : 'all';
     } catch { layouts.current = {}; }
-    open(initialSection || lastSection.current);
+    // Signup passes its Connect section explicitly; ordinary sign-ins start with the desktop clear.
+    if (initialSection) open(initialSection);
   }, [userId, open, initialSection]);
   useEffect(() => {
     if (!userId || !Object.keys(windows).length) return;
     for (const [id, value] of Object.entries(windows)) layouts.current[id] = { x: value.x, y: value.y, height: value.height, width: value.width, maximized: Boolean(value.maximized), dark: value.dark === true };
     const timer = setTimeout(() => {
-      // Store only geometry, per-window colour preferences and a section name, never library content.
-      try { localStorage.setItem(`engram-desktop:${userId}`, JSON.stringify({ layouts: layouts.current, lastSection: lastSection.current })); } catch { /* Layout persistence is optional. */ }
+      // Store window preferences, never library content or which window should reopen at sign-in.
+      try { localStorage.setItem(`engram-desktop:${userId}`, JSON.stringify({ layouts: layouts.current })); } catch { /* Layout persistence is optional. */ }
     }, 200);
     return () => clearTimeout(timer);
   }, [windows, userId]);
@@ -58,6 +56,7 @@ export default function useDesktopWindows(userId, initialSection) {
     window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize);
   }, []);
   const close = id => { setWindows(current => { const next = { ...current }; delete next[id]; return next; }); setActive(current => current === id ? null : current); };
+  const closeAll = useCallback(() => { setWindows({}); setActive(null); }, []);
   const change = (id, patch) => setWindows(current => current[id] ? { ...current, [id]: { ...current[id], ...patch } } : current);
-  return { windows, active, open, focus, close, home: () => { setWindows(current => Object.fromEntries(Object.entries(current).map(([id, record]) => [id, { ...record, minimized: true }]))); setActive(null); }, move: change, minimize: id => { change(id, { minimized: true }); setActive(null); }, toggleTheme: id => change(id, { dark: !windows[id]?.dark }), maximize: id => change(id, { maximized: !windows[id]?.maximized }) };
+  return { windows, active, open, focus, close, closeAll, home: () => { setWindows(current => Object.fromEntries(Object.entries(current).map(([id, record]) => [id, { ...record, minimized: true }]))); setActive(null); }, move: change, minimize: id => { change(id, { minimized: true }); setActive(null); }, toggleTheme: id => change(id, { dark: !windows[id]?.dark }), maximize: id => change(id, { maximized: !windows[id]?.maximized }) };
 }

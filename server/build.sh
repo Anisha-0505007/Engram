@@ -11,4 +11,9 @@ npm install
 echo "==> Building React client..."
 npm run build
 
+echo "==> Copying React app into server/public for the standalone Express deployment..."
+cd ../server
+mkdir -p public
+cp -R ../client/dist/. public/
+
 echo "==> Build complete. React app is in server/public/"
