@@ -1,0 +1,48 @@
+/* Give the signature its own surface so it stays legible over every wallpaper. */
+.desktop-signature { z-index: 275; display: flex; flex-direction: column; gap: 2px; padding: 11px 17px; border-radius: 13px; background: #f8fbf2ed; border: 1px solid #ffffffb3; color: #203d36; box-shadow: 0 6px 24px #102a3f30; font-size: 16px; line-height: 1.3; backdrop-filter: blur(16px); pointer-events: none; }
+.desktop-signature span { display: block; margin: 0; font-size: 11px; font-weight: 500; color: #426153; letter-spacing: .02em; }
+.notification-card { background: #ffe3a0; border: 1px solid #dc992d; border-left: 5px solid #d88409; box-shadow: 0 7px 24px #773b0925; }
+.notification-card .notification-type span { color: #7d4005; font-weight: 800; font-size: 9px; }
+.notification-card h3 { color: #582c06; font-size: 14px; font-weight: 750; }
+.notification-card p { color: #704617; font-size: 11px; }
+.notification-card .notification-link { color: #743806; font-weight: 700; }
+.notification-urgent { background: #ffc5b6; border-color: #e06548; border-left-color: #bc2c20; box-shadow: 0 7px 25px #ac30202b; }
+.notification-urgent .notification-type span, .notification-urgent h3 { color: #8b2018; }
+.notification-urgent p, .notification-urgent .notification-link { color: #852d23; }
+.caught-up { background: #dcf3df; border-color: #88bc95; }
+.caught-up-icon { background: #2d8553; color: white; }.caught-up h3 { color: #205f3c; font-weight: 700; }
+.desktop-window { max-height: calc(100dvh - 305px); }
+.window-maximized { width: min(900px, calc(100vw - 450px)) !important; height: calc(100dvh - 310px) !important; }
+.saved-items, .skeletons { grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: 16px; align-items: stretch; }
+.saved-card { --card-accent: #6d50ad; --card-bg: #f0eaff; --card-border: #c4afe9; --card-ink: #493077; background: linear-gradient(145deg, var(--card-bg), #fffefa 85%); border: 1px solid var(--card-border); border-top: 4px solid var(--card-accent); border-radius: 13px; padding: 17px; min-width: 0; display: flex; flex-direction: column; box-shadow: 0 4px 14px #26314a0c; }
+.card-link { --card-accent: #346bc8; --card-bg: #e2edff; --card-border: #a6c2ed; --card-ink: #234f96; }
+.card-image { --card-accent: #218466; --card-bg: #def5e8; --card-border: #94ccb4; --card-ink: #1d664e; }
+.card-pdf { --card-accent: #ce6740; --card-bg: #ffeadc; --card-border: #e6b195; --card-ink: #954321; }
+.saved-card-heading { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px 10px; align-items: start; }
+.saved-card-heading .file-symbol { grid-row: span 2; width: 34px; height: 39px; color: white; background: var(--card-accent); border: 0; border-radius: 9px; }
+.saved-card-name .eyebrow { color: var(--card-ink); font-weight: 750; }
+.item-title { color: var(--card-ink); font-size: 14px; font-weight: 750; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.saved-card-heading .status-pill { grid-column: 2; justify-self: start; font-size: 9px; font-weight: 600; }
+.edit-heading { align-self: flex-start; background: transparent; border: 0; padding: 4px 0; margin: 8px 0 0; font-size: 10px; color: var(--card-ink); font-weight: 650; }
+.edit-heading:hover { background: transparent; text-decoration: underline; }
+.bookmark-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 7px; background: var(--card-bg); color: var(--card-ink); font-size: 10px; font-weight: 700; }
+.bookmark-toggle:hover, .bookmark-toggle.is-bookmarked { background: #fff0c2; border-color: #d5a43c; color: #77520c; }
+.saved-summary { color: #435049; font-size: 12px; -webkit-line-clamp: 3; }
+.item-tags span { color: var(--card-ink); background: var(--card-bg); border-color: var(--card-border); font-weight: 550; }
+.item-tags .category-tag { color: #fff; background: var(--card-accent); border-color: var(--card-accent); }
+.saved-card-footer { margin-top: auto; padding-top: 18px; flex-wrap: wrap; gap: 12px; }
+.saved-metadata { color: #556057; font-size: 9px; }.card-actions { margin-left: auto; }
+.card-actions .small-primary { background: var(--card-accent); border-color: var(--card-accent); color: white; font-weight: 600; }
+.event-strip { background: #ffedbb; border-color: #e0b653; color: #71500b; }
+.status-done { color: #17673e; background: #cef0d9; border-color: #84c79c; }
+.status-pending, .status-partial { color: #81530a; background: #ffebad; border-color: #dfb851; }
+.status-processing, .status-classifying { color: #4535a3; background: #e5dcff; border-color: #b1a0df; }
+.status-failed { color: #a12621; background: #ffd9d0; border-color: #e59583; }
+.heading-hint { color: var(--muted); font-size: 10px; margin: 6px 0 16px; }
+@media (min-width: 768px) and (max-width: 950px) { .desktop-signature { bottom: 100px; left: auto; right: 20px; }.desktop-signature span { display: block; } }
+@media (max-width: 767px) {
+  .desktop-signature { display: flex; position: relative; left: auto; bottom: auto; width: fit-content; margin: 22px auto 8px; padding: 9px 15px; font-size: 14px; }
+  .desktop-signature span { display: block; }.desktop-window, .window-maximized { max-height: none; width: calc(100% - 20px) !important; }
+  .saved-items, .skeletons { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 13px; }
+  .saved-card { padding: 16px; }.item-title { font-size: 14px; }
+}

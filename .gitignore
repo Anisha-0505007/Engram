@@ -10,3 +10,7 @@ server/public/
 postman/.dependencies/
 *.ndjson
 Agents.md
+**/.engram-session/
+**/.engram-outbox/
+.cache/
+connector/dist/

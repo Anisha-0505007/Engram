@@ -1,0 +1,53 @@
+/* Connect gets a dedicated composition: introduction on the left, setup on the right. */
+.desktop-connecting .notification-center { display: none; }
+.desktop-connecting .desktop-welcome { display: block; left: 148px; top: 32%; max-width: 310px; }
+.desktop-connecting .desktop-welcome p { font-size: 38px; line-height: 1.14; letter-spacing: -.04em; }
+.desktop-connecting .desktop-welcome small { max-width: 280px; font-size: 12px; }
+.window-connect { left: 490px !important; top: 215px !important; width: min(1000px, calc(100vw - 520px)) !important; height: calc(100dvh - 310px) !important; max-height: calc(100dvh - 305px); }
+.window-connect .window-titlebar { cursor: default; }
+.window-connect .traffic-maximize { display: none; }
+.window-connect .window-body { padding: 26px; }
+.connection-content > .eyebrow { color: #426260; font-size: 10px; }
+.connection-content > h3 { color: #213f42; font-size: 30px; }
+.connection-content > p { font-size: 12px; color: #4c6360; margin-bottom: 21px; }
+.connection-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 18px; align-items: start; }
+.connection-card { --connect-accent: #2e6a54; --connect-ink: #244f41; --connect-bg: #e5f5e9; --connect-border: #9dcbb2; margin: 0; min-width: 0; padding: 21px; border-radius: 14px; border: 1px solid var(--connect-border); border-top: 5px solid var(--connect-accent); background: linear-gradient(145deg, var(--connect-bg), #fffefa); box-shadow: 0 5px 15px #263a3910; }
+.connection-card + .connection-card { --connect-accent: #6555b6; --connect-ink: #4a3c8d; --connect-bg: #ede8ff; --connect-border: #beb1e0; }
+.connection-heading { flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 15px; }
+.connection-heading h4 { color: var(--connect-ink); font-size: 16px; font-weight: 750; flex: 1; }
+.connection-icon { background: var(--connect-accent); color: white; width: 39px; height: 42px; border-radius: 11px; align-items: center; justify-content: center; }
+.connection-heading .status-pill { flex-basis: auto; background: #ffffffa8; color: var(--connect-ink); border-color: var(--connect-border); font-size: 10px; }
+.connection-card > p, .connection-card details, .connection-card ol { font-size: 12px; color: #354c43; line-height: 1.85; }
+.connection-card button { color: white; background: var(--connect-accent); border-color: var(--connect-accent); font-weight: 650; font-size: 12px; padding: 10px 12px; border-radius: 8px; }
+.connection-card button:hover { filter: brightness(.92); }.connection-card button:disabled { opacity: .65; }
+.connection-card .connector-open { display: inline-flex; align-items: center; padding: 9px 13px; border: 1px solid var(--connect-accent); border-radius: 8px; color: var(--connect-ink); font-weight: 700; text-decoration: none; background: #ffffffa8; }
+.connection-card .footnote { color: #506055; font-size: 10px; line-height: 1.8; }
+.connection-card summary, .connection-card a { color: var(--connect-ink); font-weight: 650; }
+.connector-setup { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--connect-border); }
+.connector-setup h5 { margin: 0 0 10px; color: var(--connect-ink); font-size: 12px; }.connector-setup ol { padding-left: 19px; }.connector-setup li + li { margin-top: 11px; }
+.connector-setup code, .connection-card details code { overflow-wrap: anywhere; font-size: 11px; }
+.welcome-tour { width: 490px; max-width: calc(100vw - 28px); padding: 26px; background: #fcfbf7; color: #273f3d; border: 1px solid #ffffffd9; border-radius: 22px; box-shadow: 0 30px 100px #10263670; max-height: calc(100dvh - 30px); overflow: auto; }
+.welcome-tour::backdrop { background: #122b3b66; backdrop-filter: blur(7px); }
+.tour-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 10px; letter-spacing: .16em; color: #577268; font-weight: 700; }
+.tour-topline button { border: 0; padding: 5px; background: transparent; }
+.tour-illustration { display: flex; justify-content: space-between; align-items: center; height: 132px; padding: 24px; margin: 22px 0; border-radius: 15px; color: #24644e; background: linear-gradient(125deg, #cde9d7, #edf5db); }
+.tour-illustration > span { font-family: Georgia, serif; font-size: 78px; opacity: .24; }
+.tour-step-1 { color: #355da1; background: linear-gradient(125deg, #d3e3fd, #e7effc); }.tour-step-2 { color: #6750a1; background: linear-gradient(125deg, #dfd6f5, #f3eafb); }.tour-step-3 { color: #9a6527; background: linear-gradient(125deg, #f5dfbb, #faf0db); }
+.tour-copy h2 { font-size: 27px; line-height: 1.2; margin: 10px 0 13px; font-weight: 650; letter-spacing: -.8px; }
+.tour-copy p { color: #52625b; font-size: 13px; line-height: 1.85; min-height: 98px; }
+.tour-progress { display: flex; gap: 7px; margin: 22px 0; }.tour-progress button { width: 26px; height: 7px; min-height: 0; padding: 0; border: 0; border-radius: 9px; background: #d9e1d9; }.tour-progress button[aria-current] { background: #38745a; }
+.tour-actions { display: flex; gap: 9px; align-items: center; }.tour-actions button { font-size: 12px; }.tour-actions .tour-skip { margin-right: auto; background: transparent; border: 0; padding-left: 0; color: #52625b; }
+.tour-replay { font-size: 10px; color: #68746b; margin: 17px 0 0; }
+@media (max-width: 1199px) {
+  .engram-desktop.desktop-connecting { height: auto; min-height: 100dvh; overflow: auto; padding-top: 213px; padding-bottom: 100px; }
+  .desktop-connecting .desktop-welcome { position: relative; top: auto; left: auto; margin: 5px 25px 25px 146px; max-width: none; padding: 0; }
+  .desktop-connecting .desktop-welcome p { font-size: 42px; margin: 12px 0; }.desktop-connecting .desktop-welcome small { max-width: none; }
+  .window-connect { position: relative; left: auto !important; top: auto !important; width: calc(100% - 171px) !important; height: auto !important; min-height: 480px; max-height: none; margin: 0 25px 15px 146px; }
+  .window-connect .window-body { overflow: visible; }.window-connect .window-titlebar { position: sticky; top: 208px; z-index: 2; }
+}
+@media (max-width: 767px) {
+  .desktop-connecting .desktop-welcome { display: block; margin: 12px 22px 24px; }.desktop-connecting .desktop-welcome p { font-size: clamp(31px, 7.5vw, 42px); }
+  .window-connect { width: calc(100% - 24px) !important; margin: 0 12px 15px; min-height: 0; }.window-connect .window-body { padding: 20px 16px; }
+  .window-connect .window-titlebar { top: 195px; }.connection-options { gap: 16px; }.connection-card { padding: 19px; }
+  .welcome-tour { padding: 22px; border-radius: 17px; }.tour-copy h2 { font-size: 24px; }.tour-illustration { height: 106px; margin: 18px 0; }.tour-actions { gap: 6px; }.tour-actions button { font-size: 11px; padding-inline: 9px; }
+}

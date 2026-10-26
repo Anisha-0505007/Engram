@@ -8,6 +8,7 @@ Create `docs/eval-cases.json` containing at least 25 entries of this shape, usin
 [
   { "query": "wifi plan screenshot", "expectedItemIds": ["actual_24_character_item_id"] }
 ]
+
 ```
 
 Include exact words, synonyms, image text, PDF text, dates, categories and ambiguous queries. Keep the same saved items and queries for all three modes.

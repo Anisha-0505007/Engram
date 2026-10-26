@@ -1,0 +1,49 @@
+/* Vector scenery stays sharp on high-density screens; only decorative layers animate. */
+.engram-desktop {
+  --sky-top: #a8c9dd; --sky-bottom: #f7dfbe; --sun-color: #fff1bf;
+  --hill-far: #a3bbc0; --hill-mid: #809fa4; --hill-front: #476f70; --hill-base: #294f56;
+  --water-top: #b0c8c8; --water-bottom: #759f9f; --tree-color: #305457; --cloud-color: #fff9ee;
+  --desktop-ink: #243d46; background: var(--sky-top); isolation: isolate;
+}
+.engram-desktop[data-period="afternoon"] {
+  --sky-top: #85b7db; --sky-bottom: #dce8db; --sun-color: #fff7d3;
+  --hill-far: #98b4c1; --hill-mid: #70999f; --hill-front: #42746b; --hill-base: #264f4e;
+  --water-top: #9fc7ce; --water-bottom: #61979f; --tree-color: #284f4b; --desktop-ink: #203b46;
+}
+.engram-desktop[data-period="evening"] {
+  --sky-top: #777fa6; --sky-bottom: #f2b799; --sun-color: #ffd0a1;
+  --hill-far: #a49aaf; --hill-mid: #7e829b; --hill-front: #4d6378; --hill-base: #303e57;
+  --water-top: #c3a6b3; --water-bottom: #6a809c; --tree-color: #34465c; --cloud-color: #ffdfc9;
+  --desktop-ink: #f9f0e8;
+}
+.engram-desktop[data-period="night"] {
+  --sky-top: #111b36; --sky-bottom: #465273; --sun-color: #e3e8ff;
+  --hill-far: #424e70; --hill-mid: #2d3e60; --hill-front: #20344c; --hill-base: #142338;
+  --water-top: #435777; --water-bottom: #253c59; --tree-color: #172a3e; --cloud-color: #a8b5cf;
+  --desktop-ink: #edf1ff;
+}
+.living-wallpaper { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: linear-gradient(var(--sky-top), var(--sky-bottom) 76%); }
+.landscape { width: 100%; height: 100%; position: absolute; inset: 0; }
+.sky-glow { position: absolute; width: 65vw; height: 65vw; top: -15vw; right: -5vw; border-radius: 50%; background: radial-gradient(circle, var(--sun-color), transparent 65%); opacity: .3; animation: sky-breathe 18s ease-in-out infinite alternate; }
+.sky-orbit { position: absolute; top: 24%; left: 71%; width: clamp(65px, 7vw, 130px); aspect-ratio: 1; animation: sun-float 16s ease-in-out infinite alternate; }
+.sky-sun, .sky-moon { display: block; position: absolute; inset: 0; border-radius: 50%; background: var(--sun-color); box-shadow: 0 0 65px 15px color-mix(in srgb, var(--sun-color) 24%, transparent); }
+.sky-moon { display: none; background: #e4eafa; box-shadow: inset -17px -7px 0 #bbc8e0, 0 0 80px #c5d8ff25; }
+[data-period="evening"] .sky-orbit { top: 43%; }
+[data-period="night"] .sky-sun { display: none; }
+[data-period="night"] .sky-moon { display: block; }
+.sky-stars { opacity: 0; }
+[data-period="night"] .sky-stars { opacity: 1; animation: starlight 5s ease-in-out infinite alternate; }
+.sky-cloud { animation: cloud-drift 45s ease-in-out infinite alternate; }
+.cloud-two { animation-duration: 65s; animation-direction: alternate-reverse; }
+[data-period="night"] .sky-cloud { opacity: .3; }
+.water-reflection { animation: water-shimmer 9s ease-in-out infinite alternate; transform-origin: 70% 78%; }
+.landscape-birds { animation: bird-drift 30s ease-in-out infinite alternate; }
+[data-period="night"] .landscape-birds { opacity: 0; }
+.landscape-grain { position: absolute; inset: 0; opacity: .15; background: repeating-linear-gradient(0deg, transparent 0 2px, #fff1 2px 3px); }
+@keyframes cloud-drift { to { transform: translateX(95px); } }
+@keyframes bird-drift { to { transform: translate(90px, -20px); } }
+@keyframes sky-breathe { to { opacity: .45; transform: scale(1.07); } }
+@keyframes sun-float { to { transform: translateY(-12px); } }
+@keyframes starlight { to { opacity: .45; } }
+@keyframes water-shimmer { to { opacity: .45; transform: scaleX(.92); } }
+@media (prefers-reduced-motion: reduce) { .living-wallpaper *, .living-wallpaper *::before { animation: none !important; } }

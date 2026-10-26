@@ -17,7 +17,7 @@ export default function Register() {
       await api.post('/auth/register', { email, password });
       // On success, the server sets the auth cookie automatically.
       // We redirect to the dashboard — no need to store a token in JS.
-      navigate('/dashboard');
+      navigate('/dashboard', { state: { welcome: true } });
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');
     } finally {

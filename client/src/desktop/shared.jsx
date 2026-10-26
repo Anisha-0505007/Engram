@@ -3,12 +3,13 @@ export const sections = [
   { id: 'links', title: 'Links', icon: 'link', subtitle: 'A little corner of the internet, saved.' },
   { id: 'upcoming', title: 'Upcoming', icon: 'calendar', subtitle: 'What is coming up, and where you saved it.' },
   { id: 'photos', title: 'Photos', icon: 'image', subtitle: 'Screenshots, photographs, and things worth keeping.' },
+  { id: 'bookmarks', title: 'Bookmarks', icon: 'bookmark', subtitle: 'The things you chose to keep close.' },
   { id: 'confidential', title: 'Confidential', icon: 'lock', subtitle: 'A private place for sensitive things.' },
 ];
 export const titleFor = id => sections.find(section => section.id === id)?.title || ({ connect: 'Connect WhatsApp', account: 'Your account', help: 'About Engram', search: 'Search results', ask: 'Ask AI', source: 'Saved item' }[id] || 'Engram');
 export const emptyFilters = { type: '', dateFrom: '', dateTo: '', category: '', status: '' };
 export const errorMessage = error => error.response?.data?.error || (error.code === 'ECONNABORTED' ? 'This is taking longer than expected. Please try again.' : 'Could not reach Engram. Please try again.');
-export const itemTitle = item => item.enrichment?.title || item.rawText?.slice(0, 100) || ({ image: 'Saved image', pdf: 'Saved PDF', link: 'Saved link', text: 'Saved note' }[item.type] || 'Saved item');
+export const itemTitle = item => item.userEdits?.title || item.enrichment?.title || item.rawText?.slice(0, 100) || ({ image: 'Saved image', pdf: 'Saved PDF', link: 'Saved link', text: 'Saved note' }[item.type] || 'Saved item');
 export const sourceLabel = source => ({ 'linked-device': 'Personal WhatsApp', whatsapp: 'Business number', web: 'Web', export: 'Import' }[source] || 'Saved item');
 export function formatDate(value, dateOnly = false) {
   const date = new Date(value);
@@ -17,6 +18,10 @@ export function formatDate(value, dateOnly = false) {
 }
 export function Icon({ name, size = 20, ...props }) {
   const paths = {
+    sun: 'M12 8a4 4 0 110 8 4 4 0 010-8z M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l1.5 1.5 M17.5 17.5L19 19 M5 19l1.5-1.5 M17.5 6.5L19 5',
+    moon: 'M20.5 13A8.5 8.5 0 0111 3.5 8.5 8.5 0 1020.5 13z',
+    edit: 'M16 3l5 5 M4 16L17 3l4 4L8 20l-5 1z',
+    bookmark: 'M6 4h12v17l-6-4-6 4z',
     library: 'M4 4h5v16H4z M11 4h4v16h-4z M17 5l3-1 4 15-3 1z',
     link: 'M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-2 2 M14 11a5 5 0 00-7 0l-3 3a5 5 0 007 7l2-2',
     calendar: 'M5 5h14a2 2 0 012 2v13H3V7a2 2 0 012-2z M7 3v5 M17 3v5 M3 11h18 M7 15h3 M14 15h3',
