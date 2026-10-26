@@ -1,141 +1,246 @@
 # Engram
 
-Save from WhatsApp or the web. Find your saved content later.
+Save in a moment. Find when it matters.
+
+Engram is a private library for the notes, links, screenshots and PDFs people save for later. It combines durable capture, background processing, search and source-linked answers.
+
+- **Application:** [engram-beryl.vercel.app](https://engram-beryl.vercel.app)
+- **Source:** [Anisha-0505007/Engram](https://github.com/Anisha-0505007/Engram)
+- **API health:** [Render backend](https://engram-eont.onrender.com/api/health)
+- **Demo:** [recording script](docs/demo-script.md). A public video link still needs to be added.
+- **Release checks:** [submission audit](docs/submission-audit.md), dated 27 October 2026.
+
+**Current release status:** local automated checks and public deployment routes have been verified. A newly created hosted account has reported an AI credentials failure; successful fresh-account enrichment, media processing and search/Ask still require a complete hosted run. This README describes implemented behavior, with live limitations stated separately.
 
 ## Problem Statement
-People save notes, links, screenshots and PDFs in WhatsApp, then struggle to retrieve them by topic or meaning.
+
+People use chats as a place to save useful information, then struggle to retrieve a link by its topic, a screenshot by its contents, or a document by what it describes. Content is scattered across message types, and relevant details can be hidden inside an image or PDF.
 
 ## Target Users
-Students and young professionals, initially classmates and hostel mates.
+
+Students and young professionals who save study material, application links, workshop details, screenshots and personal notes. Evaluators can try the web workflow without connecting a WhatsApp account.
 
 ## Solution
-Users send content to Engram's business number or use Web Quick Add. Express saves it, a Mongo-backed worker enriches it, and a private timeline supports keyword/semantic search and grounded Q&A.
+
+Engram supports four connected workflows:
+
+1. **Capture:** save a note, URL, image or PDF from the web. Optional WhatsApp capture feeds the same item and job pipeline.
+2. **Process and find:** a Mongo-backed worker extracts useful text, labels content and creates embeddings. Search combines keyword matches and semantic results; Ask attempts to answer from retrieved saved items with source references.
+3. **Organize and correct:** browse sections, filter results, bookmark items, edit headings/tags/categories, and retry failed processing without losing the original.
+4. **Protect:** accounts own their data. Confidential items require a separate password unlock and stay outside normal search and AI answers.
 
 ## Key Features
-- Links, Upcoming, Photos and password-unlocked Confidential sections; protected items are excluded from AI search and answers.
-- Evidence-backed event dates and in-app reminders in the final 24 hours, urgent within one hour; original-message date filters use India time in the web app.
-- Image transcription followed by text enrichment provides searchable visual subjects and deadline extraction. New and older files are classified automatically through the worker, with no manual review. Mark private uploads confidential before saving to skip AI.
-- **Optional personal WhatsApp connector:** a local, unofficial Baileys adapter was requested on 26 Oct after Meta account restrictions blocked setup. See [connector setup and limitations](connector/README.md). Baileys 7.0.0-rc14 is installed and pinned; parser/outbox and backend capture tests pass, but live pairing remains unverified. This is an explicit change to the original official-API-only scope.
-- Register/login/logout with bcrypt and JWT in httpOnly cookies; user-scoped item access.
-- Signed Meta webhooks, batched message parsing, duplicate item/job protection and queued bot acknowledgements.
-- Web capture for notes, links, JPEG/PNG/WebP images and PDFs up to 10 MB.
-- Background link analysis, image OCR and PDF extraction through Cloudflare Workers AI, with validated JSON, one repair retry, embeddings and visible failure/retry states.
-- Atlas Search and Vector Search combined with RRF; type/date/category filters and explicit fallback warnings.
-- Timeline status filters, stable cursor pagination, private media viewing, editable tags/category and deletion with storage cleanup.
-- Per-user daily AI-call budget, worker backoff, terminal failure state and stuck-job recovery.
 
-These features depend on valid external configuration. See the release verification status below; implementation does not establish live provider success.
+- Registration, login and logout with bcrypt password hashing and a JWT in an httpOnly cookie.
+- Web Quick Add for text and links; JPEG, PNG, WebP and PDF uploads, up to 10 MB decoded.
+- Visible pending, processing, done and failed states; durable jobs, retries, daily AI budgets and stuck-job recovery.
+- Link metadata extraction, image transcription, PDF text extraction, structured enrichment and 768-dimensional embeddings through Cloudflare Workers AI.
+- Atlas keyword and vector search merged with Reciprocal Rank Fusion (RRF); explicit keyword fallback warnings.
+- Ask with saved source cards, citation checks, and a not-found or answer-generation fallback.
+- All items, Links, Upcoming, Photos, Bookmarks and Confidential sections.
+- Original saved-date, type, category and processing-status filters; stable cursor pagination for browsing.
+- Editable headings, categories and tags that survive reprocessing; deletion with associated media/job cleanup.
+- Evidence-supported event dates and in-app reminders: within 24 hours of a future event, urgent within one hour, while the app is open.
+- Confidential access with a five-minute unlock tied to the current login; private content excluded from AI retrieval.
+- Responsive desktop-style UI, individual window themes, time-based wallpaper, a signup tour and one active section at a time.
+- Optional official business-number ingestion and a separate optional local personal connector. Their deployment requirements are described below.
+
+These are implementation capabilities, not a claim that every provider-dependent feature has passed on the hosted release.
 
 ## Tech Stack
-React 18/Vite, Node.js/Express 5, Mongoose/MongoDB Atlas, Supabase private object storage, Meta WhatsApp Cloud API and Cloudflare Workers AI REST API. Native Node test runner; no new dependencies were required for the reliability changes.
+
+| Component | Technology |
+|---|---|
+| Frontend | React 18, Vite, React Router, Axios, CSS |
+| Backend | Node.js, Express 5, JavaScript ES modules |
+| Database | MongoDB Atlas and Mongoose |
+| Retrieval | Atlas Search, Atlas Vector Search, RRF |
+| AI integration | Cloudflare Workers AI REST API behind small application wrappers |
+| Private media | Supabase Storage, private bucket and signed URLs |
+| Authentication and validation | bcrypt, JWT cookies, Zod, Helmet, explicit origin checks and rate limits |
+| Optional ingestion | Meta WhatsApp Cloud API; separate local Baileys connector |
+| Hosting | Vercel frontend/proxy; Render Express API and worker |
+| Verification | Native Node test runner, in-memory MongoDB; optional Postman HTTP simulation |
 
 ## Architecture
+
+The backend is one Express application with a worker in the same process. The frontend is deployed separately, and Vercel forwards browser requests under `/api` to Render. The browser keeps its session cookie on the frontend domain.
+
 ```mermaid
 flowchart LR
-  WA[WhatsApp user] --> Meta[Meta Cloud API]
-  Meta -->|Signed webhook| API[Express API]
-  Web[React web app] --> API
-  API --> DB[(MongoDB Atlas)]
-  Worker[Worker in same process] -->|Atomic claim| DB
+  Browser[Browser] --> Frontend[React on Vercel]
+  Frontend -->|Same-origin /api proxy| API
+  subgraph Render
+    API[Express API]
+    Worker[Background worker]
+  end
+  API --> DB[(MongoDB Atlas: users, items, jobs, quotas)]
+  Worker -->|Atomic job claim| DB
   Worker --> AI[Cloudflare Workers AI]
-  Worker --> Storage[Private Supabase bucket]
-  Worker -->|Replies| Meta
+  API --> Storage[Private Supabase Storage]
+  Worker --> Storage
+  Meta[Meta Cloud API: optional] -->|Signed webhook| API
+  Worker -->|Queued replies| Meta
+  Connector[Local personal connector: optional] -->|Authenticated capture| API
 ```
 
-| Decision | Reason |
+| Decision | Reason and trade-off |
 |---|---|
-| One MERN deployment | Express serves the React build and APIs on one origin. |
-| MongoDB jobs | Atomic claim, retry and dead-letter state without Redis. |
-| Same-process worker | Small deployment; a heartbeat protects long jobs. |
-| Atlas text/vector search | One database, owner pre-filters, no separate vector database. |
-| Small LLM wrapper using fetch | Provider HTTP, JSON validation and repair are in one file. |
-| Private object storage | Store media outside MongoDB; authorize ownership before issuing a signed link. |
+| One backend with a same-process worker | Straightforward to operate for this prototype. Worker throughput is limited; HTTP health alone does not prove AI readiness. |
+| Vercel proxy to Render | Frontend and API can use separate hosts while browser authentication stays on one origin. API proxy caching is disabled. |
+| MongoDB job collection | Atomic claims, idempotency, retry scheduling and a terminal failed state without another infrastructure service. |
+| Atlas search in the application database | Owner filters and search indexes share the existing data store. Search indexes must be provisioned separately. |
+| Plain HTTP AI wrappers | Provider errors, structured-output validation and repair remain visible without an agent framework. |
+| Private object storage | Media does not fill MongoDB storage. The backend checks access before issuing a signed URL. |
 
-Idempotency uses unique message IDs and job deduplication keys. Async processing keeps media downloads and AI outside the webhook. Retries use 30s → 120s → 480s backoff; failed jobs can be retried. Item indexes cover owner/timestamp and owner/type. Rate limiting is in-memory for one instance. AI quotas are stored atomically in MongoDB and reset by UTC day.
+Capture returns after the item and job are stored; AI runs asynchronously. Unique message/capture IDs and job deduplication keys prevent duplicate items/jobs. Failed transient work uses exponential backoff; exhausted or nonretryable jobs remain failed until Retry. Heartbeats and stale-lock recovery handle interrupted work.
 
-Back-of-envelope assumption: 100 users × 20 items/day gives 2,000 items/day. One 768-number vector is roughly 6 KB before BSON/index overhead; media dominates storage. The serial worker and free-tier quotas are prototype limits, not a production capacity claim.
+Search parses the query into text and optional filters, validates the result, and falls back to plain text on parsing failure. Keyword and vector retrieval apply ownership/privacy filters. RRF combines ranks using `1 / (60 + rank)`; it does not guarantee better results than either input. Low-confidence vector results are excluded.
 
-Deliberately omitted: caching layer, Redis, message broker, microservices, LangChain, Kubernetes and a separate vector database; this fixed pipeline does not justify their operational cost.
+Primary records are `users`, `linkCodes`, `items`, `jobs` and `aiUsage`. Items retain original content, enrichment and separate `userEdits`, so reprocessing preserves user corrections. Indexes cover owner/timestamp, owner/type, capture uniqueness and runnable jobs.
+
+At an assumed 100 users saving 20 items each day, the system receives 2,000 items/day. A vector contains 768 numeric values; BSON and index overhead add storage. This is a planning assumption, not a load-test result. Serial processing, storage and provider quotas constrain capacity.
+
+Redis, a separate message broker, a separate vector database, microservices and an agent framework were omitted because this pipeline does not currently require their operational complexity. Rate limits are held in memory and are intended for one API instance.
 
 ## Local Setup
-Use a Node version supported by the installed packages (Node 24 was used for local verification).
 
-1. Install dependencies in `server/` and `client/` with `npm ci`.
-2. Copy `server/.env.example` to `server/.env` yourself and fill the values. Never commit or share this file.
-3. Create a **private** Supabase bucket named `engram-media`.
-4. From `client/`, run `npm run build`. Vite writes directly to `server/public`.
-5. From `server/`, run `npm start`. Open http://localhost:8000.
-6. For frontend development, use `npm run dev` in `client/`; Vite proxies `/api` to port 8000.
+Use Node.js 24 and npm. Use a separate development database: the worker processes jobs from whichever database the backend is configured to use.
 
-From `server/`, run `node scripts/searchIndexes.mjs --apply` to create/update the required `text_index` and `vector_index`. Wait until both are queryable; `node scripts/searchIndexes.mjs` reports their state. The definitions include owner, type, timestamp, effective category and embedding model filters.
+1. Clone the repository and install the application dependencies:
 
-Old embeddings must be regenerated when their model changes, even if both models have 768 dimensions. Use **Reprocess** on completed items. The search deliberately excludes embeddings from other model spaces.
+   ```sh
+   git clone https://github.com/Anisha-0505007/Engram.git
+   cd Engram/server
+   npm ci
+   cd ../client
+   npm ci
+   ```
 
-### Checks
-```text
+2. Copy `server/.env.example` to `server/.env` on your own computer and fill the required values from the table below. Do not commit that file.
+3. Configure MongoDB Atlas access for your development machine.
+4. Create a **private** Supabase bucket named `engram-media` for uploads.
+5. Start the backend in one terminal:
+
+   ```sh
+   cd server
+   npm run dev
+   ```
+
+6. Start the frontend in another terminal:
+
+   ```sh
+   cd client
+   npm run dev
+   ```
+
+7. Open http://localhost:5173. Vite forwards `/api` to Express at port 8000. Registration and basic saving require the database; enrichment additionally requires valid AI access, and uploads require storage.
+
+Create/check the Atlas search indexes from `server/`:
+
+```sh
+node scripts/searchIndexes.mjs --apply
+node scripts/searchIndexes.mjs
+```
+
+Wait until `text_index` and `vector_index` are queryable. The vector index must match the configured 768-dimensional model. Reprocess existing items when their embedding model changes.
+
+`npm run build` in `client/` writes to **client/dist**, not directly to Express. For a combined Express deployment, `bash build.sh` in `server/` installs dependencies, builds the frontend and copies its output into `server/public/`. The Vercel deployment uses `client/dist` independently.
+
+On Windows PowerShell, use `npm.cmd` if the shell blocks the `npm.ps1` shim.
+
+## Environment Variables
+
+Set backend variables on **Render**, or in your private local backend environment. The frontend does not need provider secrets.
+
+| Variable | Purpose |
+|---|---|
+| `MONGODB_URI` | Required Atlas connection string. |
+| `JWT_SECRET` | Required private signing secret. |
+| `NODE_ENV` | Set to `production` on Render for secure production cookies. |
+| `PORT` | Local port; defaults to 8000. Hosting supplies its assigned port. |
+| `CLIENT_ORIGIN` | Exact allowed frontend origin. Production: `https://engram-beryl.vercel.app`; development: `http://localhost:5173`. |
+| `CLOUDFLARE_ACCOUNT_ID` | Account ID containing exactly 32 hexadecimal characters; required for AI. |
+| `CLOUDFLARE_API_TOKEN` | Workers AI token; required for AI. |
+| `DAILY_AI_CALL_LIMIT` | Application budget per user per UTC day; defaults to 100 calls. This is separate from provider quotas. |
+| `SUPABASE_URL` | Storage project URL; required for media. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Private server storage key; required for media. |
+| `WHATSAPP_APP_SECRET` | Optional official integration: webhook signature verification. |
+| `WHATSAPP_VERIFY_TOKEN` | Optional official integration: Meta GET verification. |
+| `WHATSAPP_ACCESS_TOKEN` | Optional official integration: Graph API/media/replies. `WHATSAPP_TOKEN` is a compatibility alias. |
+| `WHATSAPP_PHONE_NUMBER_ID` | Optional official integration: business phone identifier. |
+| `WHATSAPP_API_VERSION` | Optional Graph version override; code default is `v23.0`. Check your Meta application's supported version. |
+| `CLOUDFLARE_BASE_URL`, `WHATSAPP_BASE_URL` | Optional diagnostic/simulation overrides. Normally omit them. |
+
+The code uses Cloudflare models `@cf/meta/llama-3.2-11b-vision-instruct` and `@cf/baai/bge-base-en-v1.5`. Provider access and current terms must be checked for the configured account; no free-tier capacity is guaranteed here. See [Cloudflare setup](docs/cloudflare-setup.md).
+
+The old `VITE_API_BASE_URL` setting is unused. The frontend calls `/api`; `client/vercel.json` contains the Render destination. Update that public destination if the backend hostname changes.
+
+Cloudflare settings are shared by all Engram accounts on a backend process. Its credentials error is raised before the per-user quota check. A failed item's error remains stored until Retry/reprocessing; creating another account does not supply server credentials.
+
+## Deployment
+
+| Service | URL / settings |
+|---|---|
+| Frontend | https://engram-beryl.vercel.app |
+| Vercel settings | Root `client`; preset `Vite`; build `npm run build`; output `dist`; automatic dependency installation. |
+| Backend | https://engram-eont.onrender.com |
+| Render settings | Root `server`; build `bash build.sh`; start `npm start`; branch `main`. |
+| Browser API | https://engram-beryl.vercel.app/api/health, proxied to Render. |
+| Official webhook, if configured | `https://engram-eont.onrender.com/webhook/whatsapp` |
+
+Add backend environment variables on Render and redeploy that service. Public health routes establish HTTP availability, not successful model calls, media access or a complete authenticated workflow.
+
+**Evaluator path:** open the frontend, register an account, use Quick Add, and inspect processing/search. WhatsApp setup is optional. A current hosted AI-processing failure is recorded in [the submission audit](docs/submission-audit.md) and must be resolved before claiming the complete AI workflow works.
+
+**Official WhatsApp:** users send/forward to Engram's business number, not directly from their private chat history. Meta test mode requires whitelisted numbers. Live delivery and replies have not been certified in this audit.
+
+**Personal WhatsApp connector:** an optional unofficial local adapter captures new messages from the user's own Message Yourself chat. It requires a local process and pairing; it cannot import history or be started/paired by a normal browser alone. Parser/outbox/capture tests do not prove live pairing. See [setup and limitations](connector/README.md).
+
+The Windows installer exists as a local build but is Git-ignored and needs a separate deployment artifact step. The standard Render build does not publish it automatically; hosted download availability is unverified. The endpoint returns an explicit unavailable response if it is absent. Use the documented manual connector setup until the hosted artifact and pairing are verified.
+
+A public demo video link and any dedicated demo account must be provided after recording and checking access. Do not publish credentials for an account containing personal content.
+
+## Testing and Verification
+
+```sh
 cd server
+npm test
+cd ../connector
+npm ci
 npm test
 cd ../client
 npm run build
 ```
-The optional Postman simulation checks the real AI HTTP client against a local stand-in, not real model quality. Commands are in [the simulation context](postman/simulations/ai-local.context.md). The optional `node scripts/verifyLive.mjs` uses temporary synthetic records and removes them afterward; `--without-storage` skips the upload/download prerequisite.
 
-Backend tests place temporary MongoDB data under the ignored `.cache/test-tmp` directory on the project drive. This avoids relying on the system drive, which was nearly full during verification. Run connector tests separately with `npm test` in `connector/`.
+The native Node tests cover authentication, ownership isolation, capture deduplication, worker transitions, quota behavior, validation, privacy, bookmarks, SSRF and provider HTTP error handling. Database tests use isolated in-memory MongoDB, with temporary files under the ignored `.cache/test-tmp/` directory.
 
-## Environment Variables
-The full placeholder template is `server/.env.example`. Set secrets in the server environment only.
+Atlas Search/Vector Search cannot run in that in-memory database. The tests verify filter/ranking logic and local behavior; real Atlas relevance and hosted providers require separate checks. Optional Postman simulations are disabled by default. [Simulation instructions](postman/simulations/ai-local.context.md) explain the explicit opt-in run.
 
-| Variable | Purpose |
-|---|---|
-| `PORT`, `NODE_ENV` | HTTP port and production cookie behavior |
-| `MONGODB_URI`, `JWT_SECRET` | Atlas connection and JWT signing |
-| `CLIENT_ORIGIN` | Exact frontend origin allowed by the backend (Vite locally; Vercel in production) |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID, 32 hexadecimal characters |
-| `CLOUDFLARE_API_TOKEN` | Server-only Workers AI token |
-| `DAILY_AI_CALL_LIMIT` | Application budget per user per UTC day; default 100, not the provider's quota |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Server-only private media access |
-| `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Webhook signature and GET verification |
-| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Media retrieval and replies |
-| `WHATSAPP_API_VERSION` | Configurable Graph version; default `v23.0`, verify against your Meta app |
-
-`CLOUDFLARE_BASE_URL` and `WHATSAPP_BASE_URL` are optional test overrides. Do not point a real credential at an untrusted host. Cloudflare is the only AI provider; old provider settings are ignored. Follow [Cloudflare setup](docs/cloudflare-setup.md) for credentials, model terms, free allowance and synthetic verification.
-
-Provider references: [Cloudflare vision](https://developers.cloudflare.com/workers-ai/models/llama-3.2-11b-vision-instruct/), [embeddings](https://developers.cloudflare.com/workers-ai/models/bge-base-en-v1.5/), [PDF conversion](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/), [Meta's message contract](https://www.postman.com/meta/whatsapp-business-platform/folder/o48mro7/messages).
-
-## Deployment
-Recorded hosted URL: https://engram-eont.onrender.com. The current local changes must be deployed before that URL serves them; this session has not verified the hosted release or demo credentials.
-
-Render configuration: root directory `server`, build command `bash build.sh`, start command `npm start`. Configure server variables with `NODE_ENV=production` and `CLIENT_ORIGIN` set to the exact Vercel production URL. Register `https://YOUR_RENDER_HOST/webhook/whatsapp` with Meta.
-
-Vercel configuration: root directory `client`, framework preset `Vite`, default build command, default output directory (`dist`), and default install command. The browser calls `/api` on its own Vercel origin; `client/vercel.json` forwards these requests to `https://engram-eont.onrender.com/api` before the SPA fallback. This keeps login cookies on the frontend site and avoids third-party cookie blocking. API responses are excluded from rewrite caching. No frontend API environment variable is required; the previous `VITE_API_BASE_URL` setting is unused. Update the rewrite destination if the Render hostname changes. Verify `/api/health`, SPA deep-link refreshes, login persistence and all workflows in incognito.
-
-**Meta test mode:** only explicitly whitelisted phone numbers can use the test business number. The official API cannot read personal chats. Evaluators can use Web Quick Add; image/PDF capture also requires configured private storage.
-
-Do not publish demo credentials until the account exists and its login has been tested. Use a dedicated account without personal saved content.
-
-### Verification status — 25 Oct 2026
-- Local signature, duplicate capture, HTTP auth/isolation, pagination, edits, SSRF and worker/quota checks passed.
-- Local React production build passed.
-- Postman AI simulation passed JSON repair, successful enrichment, embeddings, HTTP 429/503 handling and terminal failure behavior.
-- Local app connected to Atlas and served the UI; unauthenticated item requests returned 401.
-- Both Atlas indexes are READY and queryable. A live synthetic-vector check passed owner/type/date/category isolation on text and vector search; this verifies filtering, not semantic relevance.
-- Gemini previously returned billing errors and Groq returned HTTP 401. Both integrations have been replaced by Cloudflare. Cloudflare local HTTP and Postman simulation tests pass; live account credentials, model access and output quality still need verification using [the setup guide](docs/cloudflare-setup.md).
-- Supabase credentials are configured locally. The private `engram-media` bucket was created and a synthetic PDF upload, signed download and cleanup all passed on 26 Oct.
-- Real WhatsApp delivery/replies, complete hosted workflow, demo video and submission are not verified.
+Current commands, results, scope and remaining release checks are recorded in [submission-audit.md](docs/submission-audit.md). Pattern-based repository checks are useful evidence, not an exhaustive security certification. Private environment/session files were not opened or printed.
 
 ## Evaluation Results
-[Evaluation status and reproducible runner](docs/evaluation.md). Previous unsupported performance figures were removed. Run against at least 25 actual query/expected-ID cases before reporting scores. RRF has no guarantee of outperforming both inputs.
+
+No current, reproducible semantic-quality score is published. [docs/evaluation.md](docs/evaluation.md) describes how to create at least 25 real query/expected-item cases and run `server/scripts/evaluate.mjs`. Report measured top-5 hit rate; do not describe it as multi-item recall or invent improvements over keyword search.
 
 ## Limitations and What I Deliberately Didn't Build
-- PDF extraction is model-generated and can omit content; no PDF/article chunk retrieval in this release.
-- No chat-export import, in-WhatsApp search, voice transcription or reminders.
-- No automated semantic-quality benchmark has been measured yet.
-- Keyword fallback is basic word matching when Atlas Search is unavailable. The UI explicitly warns when fallbacks occur.
-- Media cleanup errors are surfaced. Deleting an actively processing item is rejected with a retry message.
-- Bot reply jobs are retried; a crash after sending but before recording success can produce a duplicate acknowledgement. Capture remains idempotent.
-- The worker resolves owners from trusted database jobs; web item operations derive ownership from a verified JWT, never a client-supplied owner ID.
+
+- Hosted enrichment for a fresh account still needs verification after the reported Cloudflare configuration error. Old completed items and a green health route do not establish current AI availability.
+- Model-generated OCR, PDF extraction, date classification and answers can be incomplete or incorrect. Source checks are necessary.
+- Confidential is an access control, not end-to-end encryption. Explicitly marking content Confidential before saving skips AI; unmarked media may reach the AI provider for classification. Detection is not perfect.
+- Signed URLs remain usable until expiry: 60 seconds for protected/unclassified media, up to one hour for ordinary media.
+- No PDF/article chunk retrieval, voice transcription, historical chat import, in-WhatsApp search, push notifications, email reminders or WhatsApp reminder delivery.
+- In-app reminders require the application to be open.
+- Live WhatsApp pairing/delivery and hosted installer distribution remain unverified and are optional integrations.
+- The worker is serial, rate limits are process-local, and no production load test has been measured.
+- A reply sent just before a worker crash can be sent twice on retry, even though item capture is idempotent.
+- Deletion during active processing returns a retry message; storage cleanup failure retains the item rather than claiming successful deletion.
+- Citation format checks cannot prove that every generated statement is factually supported.
 
 ## AI Usage
-AI tools assisted implementation and review. Earlier learning notes are in `LEARNING.md`; the student explicitly skipped further learning gates near the deadline. Automated tests establish only the behavior they exercise. The student should review the code and live demo before claiming understanding or completion.
 
-Follow [the UI checklist](docs/ui-checklist.md) before recording and submission.
+AI tools assisted brainstorming, implementation, debugging, documentation and tests. The submitted source, decisions and demo remain the author's responsibility. Tests and simulations only establish the behavior they exercise.
+
+`LEARNING.md` contains historical study notes, including earlier provider names and unfinished evaluation plans; the current source, this README and the dated audit describe the present implementation. The author should be able to explain the capture pipeline, owner filtering, job retry, search fusion and authentication design.
+
+For recording, use [the timed demo script](docs/demo-script.md). For final links and the official form, use [the submission template](docs/submission-template.md). Completing these files does not submit the project.

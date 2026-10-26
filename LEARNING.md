@@ -2,6 +2,10 @@
 
 This file tracks my understanding of the concepts used in the Engram project.
 
+## Current implementation corrections — 27 October 2026
+
+The entries below are historical study notes, not a release-verification report. Cloudflare Workers AI replaced the earlier Gemini integration; the current embedding model is `@cf/baai/bge-base-en-v1.5` with 768 dimensions. PDF text extraction is implemented, but PDF chunk retrieval is not. RRF does not guarantee that hybrid search outperforms either input. An evaluation runner exists, but a reproducible 25-case quality benchmark has not been published. See the current README and `docs/submission-audit.md` for tested behavior and unresolved hosted checks.
+
 ## Study Later
 *(Items I skipped understanding during the gate, to review later)*
 - **F4** — Media download → object storage → presigned URLs. How a WhatsApp media ID becomes a stored file. Why temporary URLs must be downloaded immediately.

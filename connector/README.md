@@ -40,7 +40,7 @@ Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows/verify.ps1`
 
 ## What is verified
 
-All 7 parser/outbox tests and 30 backend tests pass. They establish self-chat filtering, supported content types, timestamps, media size limits, retry persistence, duplicate handling, HTTPS enforcement, JWT ownership and idempotent item/job capture. The installed Baileys exports also passed an import check. These checks do not establish successful live WhatsApp pairing. No personal WhatsApp account has been paired by the assistant.
+On 27 October 2026, all 12 connector tests passed; the backend suite passed 46 tests with 3 optional simulations skipped. These checks cover self-chat filtering, supported content types, timestamps, media size limits, retry persistence, duplicate handling, HTTPS enforcement, JWT ownership and idempotent item/job capture. They do not establish successful live WhatsApp pairing or hosted installer availability. See [the submission audit](../docs/submission-audit.md). No personal WhatsApp account has been paired by the assistant.
 
 ## Operation and limitations
 
