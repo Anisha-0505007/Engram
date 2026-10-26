@@ -7,9 +7,9 @@ import axios from 'axios';
  * silently dropped and every /api/auth/me call would return 401.
  */
 const api = axios.create({
-  // Vercel serves the UI while Render hosts the API in production.
-  // Local development keeps using Vite's same-origin /api proxy.
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  // Both Vercel and Vite proxy /api to Express. Keeping browser requests on
+  // this site's origin lets httpOnly login cookies work with third-party cookies blocked.
+  baseURL: '/api',
   withCredentials: true,
 });
 

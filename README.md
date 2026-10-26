@@ -90,7 +90,6 @@ The full placeholder template is `server/.env.example`. Set secrets in the serve
 | `PORT`, `NODE_ENV` | HTTP port and production cookie behavior |
 | `MONGODB_URI`, `JWT_SECRET` | Atlas connection and JWT signing |
 | `CLIENT_ORIGIN` | Exact frontend origin allowed by the backend (Vite locally; Vercel in production) |
-| `VITE_API_BASE_URL` | Frontend build-time API base URL; production example: `https://engram-eont.onrender.com/api` |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID, 32 hexadecimal characters |
 | `CLOUDFLARE_API_TOKEN` | Server-only Workers AI token |
 | `DAILY_AI_CALL_LIMIT` | Application budget per user per UTC day; default 100, not the provider's quota |
@@ -108,7 +107,7 @@ Recorded hosted URL: https://engram-eont.onrender.com. The current local changes
 
 Render configuration: root directory `server`, build command `bash build.sh`, start command `npm start`. Configure server variables with `NODE_ENV=production` and `CLIENT_ORIGIN` set to the exact Vercel production URL. Register `https://YOUR_RENDER_HOST/webhook/whatsapp` with Meta.
 
-Vercel configuration: root directory `client`, framework preset `Vite`, default build command, default output directory (`dist`), and default install command. Set `VITE_API_BASE_URL` to the Render API base URL (for the recorded backend, `https://engram-eont.onrender.com/api`). Vite embeds this variable during the frontend build, so redeploy after changing it. Verify `/api/health`, SPA deep-link refreshes, cross-origin cookies and all workflows in incognito.
+Vercel configuration: root directory `client`, framework preset `Vite`, default build command, default output directory (`dist`), and default install command. The browser calls `/api` on its own Vercel origin; `client/vercel.json` forwards these requests to `https://engram-eont.onrender.com/api` before the SPA fallback. This keeps login cookies on the frontend site and avoids third-party cookie blocking. API responses are excluded from rewrite caching. No frontend API environment variable is required; the previous `VITE_API_BASE_URL` setting is unused. Update the rewrite destination if the Render hostname changes. Verify `/api/health`, SPA deep-link refreshes, login persistence and all workflows in incognito.
 
 **Meta test mode:** only explicitly whitelisted phone numbers can use the test business number. The official API cannot read personal chats. Evaluators can use Web Quick Add; image/PDF capture also requires configured private storage.
 
