@@ -89,7 +89,8 @@ The full placeholder template is `server/.env.example`. Set secrets in the serve
 |---|---|
 | `PORT`, `NODE_ENV` | HTTP port and production cookie behavior |
 | `MONGODB_URI`, `JWT_SECRET` | Atlas connection and JWT signing |
-| `CLIENT_ORIGIN` | Exact Vite origin in development |
+| `CLIENT_ORIGIN` | Exact frontend origin allowed by the backend (Vite locally; Vercel in production) |
+| `VITE_API_BASE_URL` | Frontend build-time API base URL; production example: `https://engram-eont.onrender.com/api` |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID, 32 hexadecimal characters |
 | `CLOUDFLARE_API_TOKEN` | Server-only Workers AI token |
 | `DAILY_AI_CALL_LIMIT` | Application budget per user per UTC day; default 100, not the provider's quota |
@@ -105,7 +106,9 @@ Provider references: [Cloudflare vision](https://developers.cloudflare.com/worke
 ## Deployment
 Recorded hosted URL: https://engram-eont.onrender.com. The current local changes must be deployed before that URL serves them; this session has not verified the hosted release or demo credentials.
 
-Render configuration: root directory `server`, build command `bash build.sh`, start command `npm start`. Configure server variables with `NODE_ENV=production`. Register `https://YOUR_HOST/webhook/whatsapp` with Meta. Verify `/api/health`, `/dashboard` refresh, cookies and all workflows in incognito.
+Render configuration: root directory `server`, build command `bash build.sh`, start command `npm start`. Configure server variables with `NODE_ENV=production` and `CLIENT_ORIGIN` set to the exact Vercel production URL. Register `https://YOUR_RENDER_HOST/webhook/whatsapp` with Meta.
+
+Vercel configuration: root directory `client`, framework preset `Vite`, default build command, default output directory (`dist`), and default install command. Set `VITE_API_BASE_URL` to the Render API base URL (for the recorded backend, `https://engram-eont.onrender.com/api`). Vite embeds this variable during the frontend build, so redeploy after changing it. Verify `/api/health`, SPA deep-link refreshes, cross-origin cookies and all workflows in incognito.
 
 **Meta test mode:** only explicitly whitelisted phone numbers can use the test business number. The official API cannot read personal chats. Evaluators can use Web Quick Add; image/PDF capture also requires configured private storage.
 

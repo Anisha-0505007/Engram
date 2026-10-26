@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 
 export const vaultCookie = 'engramVault';
-export const vaultCookieOptions = () => ({ httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/api', maxAge: 5 * 60_000 });
+export const vaultCookieOptions = () => ({ httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', path: '/api', maxAge: 5 * 60_000 });
 export function vaultUnlocked(req) {
   try {
     const value = jwt.verify(req.cookies[vaultCookie], process.env.JWT_SECRET, { algorithms: ['HS256'], audience: 'engram-vault' });
