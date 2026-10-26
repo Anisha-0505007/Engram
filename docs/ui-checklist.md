@@ -1,17 +1,21 @@
-# UI check before submission
+# Desktop UI verification
 
-Open http://localhost:8000 locally. The hosted site will use the new code only after deployment.
+Open http://localhost:8000 after building `client/`. Hosted changes require deployment.
 
-1. Register or sign in. Refresh `/dashboard` and confirm you remain signed in.
-2. Save a note with a distinctive phrase. See pending → processing → done, or a clear error with Retry if a provider fails.
-3. Paste a public article link. Open the title after enrichment. A dead link should stay saved with a partial notice.
-4. Upload a screenshot, then a small PDF. Use View file and Extracted text. Uploading HTML disguised as a PDF must fail.
-5. Search exact words and synonyms. Check the dependency warnings: keyword fallback must never pretend semantic search ran.
-6. Use type/date/category filters. Use Ask AI and click a source to jump to its item. Ask about absent information; expect a refusal.
-7. Edit tags/category, including clearing all tags. Reprocess and confirm the edits remain.
-8. On a failed item click Retry. Wait for processing to finish, delete it and confirm it disappears. Storage failures must be visible.
-9. Get Link Code; send it from a whitelisted WhatsApp number to the configured business number. Confirm linked status updates without refreshing. Forward two messages, then an image; confirm one item per message and bot acknowledgements.
-10. Sign in as another account in incognito and confirm the first account's items are absent. Sign out and confirm the dashboard redirects to login.
-11. Test the same flow on the deployed URL in incognito. Record the actual result; local tests do not establish deployment or real provider behavior.
+1. Sign in or register. Confirm the sage wallpaper and centered auth window, and refresh the protected dashboard.
+2. Single-click a desktop folder to select it; double-click or press Enter to open it. Dock icons open with one click. On a phone, tap a Home folder.
+3. Open two sections. Click to focus, drag a title bar, move it using arrow keys (Shift for larger steps), minimize, restore and resize. Reload and confirm the last section and window geometry return.
+4. Press `/` outside a text field to focus Spotlight. Search by topic; results replace the focused ordinary library window. Use Back to return to browsing. Search always excludes Confidential.
+5. Open each filter popover. Check type, category, and original saved-date range in IST. Processing status only affects timeline browsing, not search/Ask.
+6. Use Ask AI. Verify answer and source columns, stacked on mobile. Open a source and confirm the original saved item is displayed. Ask about absent content and expect the not-found response.
+7. Use a card's primary Open link/View file action and More actions menu. Expand extracted text, edit tags/category, retry/reprocess, and delete with the stored-media confirmation. A protected/deleted source must disappear from open ordinary results and invalidate an existing answer.
+8. Open Confidential while locked. Confirm there are no private titles/previews. Try a wrong password, unlock, use its local exact-text search, then lock. Verify the five-minute countdown and automatic expiry, including returning to the tab after inactivity. Reload starts locked.
+9. Confirm classification runs automatically; unresolved scans remain hidden and offer Retry automatic classification. No manual privacy-review step is needed.
+10. Check due-within-24-hours reminders, urgent styling within an hour, Dismiss, View Upcoming and the dock count. Refresh/focus must update reminders. There are no push/email/WhatsApp reminders.
+11. Open Connect. Business status reflects phone linking only. Personal connector says Status unavailable, with local setup steps; never claim the website can pair or confirm the local process.
+12. Check initial skeletons, empty guidance, inline errors with retry, success toasts, and refreshing without clearing existing cards. Try a slow connection.
+13. At 390px and 768px widths, check Home, bottom tabs, sheets, filters, reminders and scrolling. Confirm no horizontal overflow, and keep all controls keyboard reachable with visible focus.
+14. Switch accounts and inspect layout separation. LocalStorage may contain section names and numeric window geometry only, never saved items, answers, private queries, passwords or unlock state.
+15. Sign out through Account. Repeat the main capture/search path on the deployed URL before claiming deployment works.
 
-Known release limits: no PDF chunk retrieval, chat export import, voice transcription or in-WhatsApp search; evaluation scores remain unmeasured until the runner has real expected IDs. PDF extraction is model-generated and may omit text.
+Automated checks used isolated synthetic browser responses; they do not validate live account/provider content. The backend regression suite continues to verify authorization and existing API behavior.
