@@ -60,8 +60,9 @@ export function relevantVectorResults(results, minimum = MIN_VECTOR_SCORE) {
   return results.filter(item => Number.isFinite(item.vectorScore) && item.vectorScore >= minimum)
     .map(({ vectorScore: _score, ...item }) => item);
 }
-const vectorProjection = Object.fromEntries([
-  '_id', 'userId', 'source', 'captureId', 'type', 'rawText', 'url', 'media', 'originalTimestamp',
+export const vectorProjection = Object.fromEntries([
+  // The section filter runs after projection, so bookmark membership must survive it.
+  '_id', 'userId', 'source', 'captureId', 'type', 'rawText', 'url', 'media', 'originalTimestamp', 'bookmarked',
   'status', 'enrichment', 'userEdits', 'searchText', 'embeddingModel', 'effectiveCategory', 'partial',
   'confidential', 'privacyPending', 'privacyCheckQueuedAt', 'events', 'dismissedReminders', 'deleting',
   'error', 'createdAt', 'updatedAt',

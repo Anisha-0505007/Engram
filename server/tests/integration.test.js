@@ -13,6 +13,7 @@ import { processOneJob, backoffMs, recoverStuckJobs } from '../src/worker/worker
 import { withAiUser, reserveAiCall } from '../src/services/aiQuota.service.js';
 import { captureLinkedMessage, CaptureSchema } from '../src/services/linkedCapture.service.js';
 import { loginToEngram } from '../../connector/src/api.js';
+import { buildFilter, vectorProjection } from '../src/services/search.service.js';
 
 let db, server, base, cookie, owner, other;
 async function request(path, { method = 'GET', body, auth = cookie, headers = {} } = {}) {
@@ -38,6 +39,20 @@ test.before(async () => {
 });
 test.after(async () => { await new Promise(resolve => server.close(resolve)); await mongoose.disconnect(); await db.stop(); });
 test.afterEach(async () => { await Promise.all([Item.deleteMany({}), Job.deleteMany({}), LinkCode.deleteMany({}), AiUsage.deleteMany({})]); });
+
+test('vector result projection preserves bookmark state and bookmark-section filtering', async () => {
+  const saved = await Item.create({ userId: owner._id, source: 'web', type: 'text', rawText: 'Saved workshop', bookmarked: true });
+  await Item.create({ userId: owner._id, source: 'web', type: 'text', rawText: 'Another workshop', bookmarked: false });
+  await Item.create({ userId: other._id, source: 'web', type: 'text', rawText: 'Another owner', bookmarked: true });
+  // In-memory Mongo cannot run Atlas Vector Search. Exercise the real projection
+  // and the subsequent owner/bookmark filter with a fixed score instead.
+  const results = await Item.aggregate([
+    { $project: { ...vectorProjection, vectorScore: { $literal: 0.9 } } },
+    { $match: buildFilter(String(owner._id), { section: 'bookmarks' }) },
+  ]);
+  assert.deepEqual(results.map(item => String(item._id)), [String(saved._id)]);
+  assert.equal(results[0].bookmarked, true);
+});
 
 test('confidential items require a password unlock and stay outside AI retrieval', async () => {
   const saved = await request('/api/items', { method: 'POST', body: { text: 'Aadhaar card fixture' } });
