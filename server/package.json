@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "worker": "node src/worker/process.js",
     "test": "node scripts/runTests.mjs"
   },
   "keywords": [],
