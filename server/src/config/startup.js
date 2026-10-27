@@ -8,6 +8,28 @@ export function requireStartupConfig(env = process.env) {
   }
 }
 
+export function demoConfigurationIssues(env = process.env) {
+  // Report names and fixed advice only. Values can include credentials or private URLs.
+  const required = ['MONGODB_URI', 'JWT_SECRET', 'CLIENT_ORIGIN', 'SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'];
+  const issues = required.filter(key => !env[key]?.trim()).map(key => `${key} is missing`);
+  for (const key of ['CLIENT_ORIGIN', 'SUPABASE_URL']) {
+    if (!env[key]?.trim()) continue;
+    try {
+      const url = new URL(env[key]);
+      const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+      if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
+          (url.protocol !== 'https:' && !(env.NODE_ENV !== 'production' && local && url.protocol === 'http:'))) {
+        throw new Error('invalid origin');
+      }
+    } catch { issues.push(`${key} must be a valid origin URL without credentials, a path or a query`); }
+  }
+  if (env.CLOUDFLARE_ACCOUNT_ID?.trim() && !/^[a-f\d]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID)) {
+    issues.push('CLOUDFLARE_ACCOUNT_ID must contain 32 hexadecimal characters');
+  }
+  return issues;
+}
+
 export function startupFailureMessage(error, stage) {
   // Never print raw driver errors: they can include a URI, username or hostname.
   if (error.code === 'MISSING_CONFIG') return `Missing required environment variables: ${error.missingKeys.join(', ')}. Add them to the hosting project's environment settings and redeploy.`;

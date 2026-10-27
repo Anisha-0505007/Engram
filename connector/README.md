@@ -25,7 +25,7 @@ Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows/verify.ps1`
 ## Manual setup / other operating systems
 
 1. Use Node.js 24 and a running Engram server containing `/api/connectors/capture`. The updated backend must be deployed before using a hosted URL.
-2. Create/sign in to your Engram account normally. Confirm Quick Add works.
+2. Create/sign in to your Engram account normally. Confirm the library opens.
 3. With the dependency installed in this folder, run:
 
    ```text
@@ -38,6 +38,20 @@ Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows/verify.ps1`
 6. On your phone, open **WhatsApp → Linked devices → Link a device → Link with phone number** (wording may vary) and enter the pairing code displayed in your own terminal. Do not send that code to anyone or paste it into this chat.
 7. Wait for “WhatsApp connected”. Send a **new** note/link/image/PDF to your Message Yourself chat, then use **Refresh timeline** in Engram.
 
+## Pairing fails or the device is logged out
+
+Engram sign-in and WhatsApp linking are separate. Creating another Engram account does not fix a rejected WhatsApp connection. The connector now prints a safe diagnostic containing the connection phase and numeric status, without provider payloads or credentials.
+
+1. Close the stopped connector and open it again.
+2. After Engram sign-in, if **Saved WhatsApp session found** appears, type `reset`. Pressing Enter reuses the previous session.
+3. Reset archives only this verified Engram account's session under `.engram-session-backups/<userId>/`. Its pending upload queue and other accounts' sessions are preserved. Backups contain private linked-device credentials; do not share or commit them.
+4. Enter your own WhatsApp number and follow the new pairing-code instructions on your phone.
+5. If the fresh attempt still fails, try linking the same phone to official WhatsApp Web on the same computer. A failure there needs investigation in WhatsApp; success there helps isolate the unofficial connector. Fresh pairing is a recovery step, not a guarantee WhatsApp will accept the connection.
+
+When reporting a failure, share only the `WhatsApp diagnostic:` line, such as `phase=before pairing code; code=401; reason=authentication rejected`. Do not share pairing codes, session files or full debug logs. A first-time `401` is labelled as rejected pairing rather than falsely claiming a previously linked device was logged out. Terminal `401`/`403` responses stop automatic reconnect attempts.
+
+These changes require the updated connector files. Rebuild/reinstall the Windows package or run the current repository's connector; reloading the website alone does not update an already installed local connector. See the upstream [pairing-code guide](https://baileys.wiki/authentication/pairing-code) and [troubleshooting](https://baileys.wiki/advanced/troubleshooting/).
+
 ## What is verified
 
 On 27 October 2026, all 12 connector tests passed; the backend suite passed 46 tests with 3 optional simulations skipped. These checks cover self-chat filtering, supported content types, timestamps, media size limits, retry persistence, duplicate handling, HTTPS enforcement, JWT ownership and idempotent item/job capture. They do not establish successful live WhatsApp pairing or hosted installer availability. See [the submission audit](../docs/submission-audit.md). No personal WhatsApp account has been paired by the assistant.
@@ -49,7 +63,7 @@ On 27 October 2026, all 12 connector tests passed; the backend suite passed 46 t
 - JPEG, PNG, WebP and PDF are accepted up to 10 MB. The same storage/enrichment pipeline is used; missing Supabase or AI access remains a separate dependency issue.
 - A durable local outbox retries temporary HTTP failures; it is limited to 100 files / 100 MB. Rejected files remain with `.failed` suffix so they do not block later uploads. Capture/download/queue failures are announced without logging content; save those items manually if needed.
 - Engram sign-in expires after the server's cookie lifetime; restart and sign in again. The outbox and WhatsApp session are isolated by the verified Engram user ID.
-- Press Ctrl+C to stop. Stopping preserves the session and queued uploads. To revoke access, use **WhatsApp → Linked devices** on your phone and log this device out. If it is logged out, move its `.engram-session/<userId>` folder aside locally before pairing again; never share or commit that folder.
+- Press Ctrl+C to stop. Stopping preserves the session and queued uploads. To revoke access, use **WhatsApp → Linked devices** on your phone and log this device out. For a fresh pairing, restart and type `reset` at the saved-session prompt; never share or commit the session or its backups.
 - `.engram-session/` contains linked-device credentials; `.engram-outbox/` contains captured private content, including queued media. Both are ignored by Git. Keep them on a trusted computer and out of shared folders. The library's multi-file auth helper is used for this single-user local prototype, not a public multi-user pairing service.
 - WhatsApp can disconnect or restrict unofficial clients. Session storage and compatibility need maintenance; this connector is not officially supported by Meta.
 

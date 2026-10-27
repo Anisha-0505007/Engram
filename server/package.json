@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "node scripts/runTests.mjs"
+    "test": "node scripts/runTests.mjs",
+    "demo:preflight": "node scripts/demoPreflight.mjs"
   },
   "keywords": [],
   "author": "",

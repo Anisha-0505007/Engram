@@ -11,10 +11,10 @@ $stream = $assembly.GetManifestResourceStream('payload.zip')
 $zip = New-Object IO.Compression.ZipArchive($stream, [IO.Compression.ZipArchiveMode]::Read)
 try {
     $names = @($zip.Entries | ForEach-Object { $_.FullName })
-    foreach ($required in @('node.exe', 'NODE-LICENSE.txt', 'EngramConnector.exe', 'src/index.js', 'node_modules/baileys/package.json')) {
+    foreach ($required in @('node.exe', 'NODE-LICENSE.txt', 'EngramConnector.exe', 'src/index.js', 'src/session.js', 'src/connection.js', 'node_modules/baileys/package.json')) {
         if ($names -notcontains $required) { throw "Missing package entry: $required" }
     }
-    if (@($names | Where-Object { $_ -match '(^|/)(\.env[^/]*|\.engram-session|\.engram-outbox)(/|$)' }).Count -gt 0) {
+    if (@($names | Where-Object { $_ -match '(^|/)(\.env[^/]*|\.engram-session|\.engram-session-backups|\.engram-outbox)(/|$)' }).Count -gt 0) {
         throw 'Private files must not be included.'
     }
     foreach ($entry in $zip.Entries) {

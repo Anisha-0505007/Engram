@@ -6,6 +6,8 @@ import { parseSelfMessage, readMedia } from './messages.js';
 import { createOutbox } from './outbox.js';
 import { normalizePhoneNumber } from './phone.js';
 import { serverFromLaunchLink } from './launch.js';
+import { accountSessionPath, archiveSession, hasSavedSession } from './session.js';
+import { disconnectDiagnostic, authenticationFailureAdvice } from './connection.js';
 
 if (process.argv[2]) {
   // Leave errors visible in a browser-launched console until the user dismisses it.
@@ -34,7 +36,14 @@ async function main() {
   password = '';
   const root = fileURLToPath(new URL('../', import.meta.url));
   const outbox = await createOutbox(join(root, '.engram-outbox', api.userId));
-  const { state, saveCreds } = await useMultiFileAuthState(join(root, '.engram-session', api.userId));
+  if (await hasSavedSession(root, api.userId)) {
+    const choice = await prompt('Saved WhatsApp session found. Press Enter to reuse, or type reset to pair again: ');
+    if (choice.toLowerCase() === 'reset') {
+      await archiveSession(root, api.userId);
+      console.log('Previous WhatsApp session archived. Pending uploads are unchanged. Starting fresh pairing.');
+    } else if (choice) throw new Error('Cancelled: enter reset or leave the saved-session choice blank.');
+  }
+  const { state, saveCreds } = await useMultiFileAuthState(accountSessionPath(root, api.userId));
   const phone = state.creds.registered ? '' : normalizePhoneNumber(await prompt('Your WhatsApp number with country code: '));
   console.log('Signed in to Engram. Only messages sent to your own Message Yourself chat will be captured.');
   // Disable provider logging because it can include content and session material.
@@ -81,6 +90,8 @@ async function main() {
     });
     socket = current;
     let pairingRequested = false;
+    let pairingCodeShown = false;
+    let connected = false;
     current.ev.on('creds.update', () => {
       saveChain = saveChain.then(saveCreds).catch(() => { console.warn('Could not save the linked-device session. Check local disk space.'); stop(); });
     });
@@ -90,15 +101,23 @@ async function main() {
         pairingRequested = true;
         try {
           const code = await current.requestPairingCode(phone);
+          if (stopped || current !== socket) return;
+          pairingCodeShown = true;
           console.log('On your phone: WhatsApp → Linked devices → Link a device → Link with phone number.');
           // Pairing material is displayed only in the user's interactive terminal, never a server log.
           console.log(`Enter this pairing code on your phone: ${code}`);
-        } catch { console.warn('Pairing could not start. Restart the connector and try again.'); stop(); }
+        } catch (error) {
+          if (stopped || current !== socket) return;
+          console.warn(disconnectDiagnostic(error, { registered: state.creds.registered, pairingCodeShown, connected }).message);
+          console.warn('Pairing could not start. Restart the connector and try again.'); stop();
+        }
       }
-      if (update.connection === 'open') { reconnectAttempts = 0; console.log('WhatsApp connected. Send a NEW note/link/image/PDF to your Message Yourself chat.'); }
+      if (update.connection === 'open') { connected = true; reconnectAttempts = 0; console.log('WhatsApp connected. Send a NEW note/link/image/PDF to your Message Yourself chat.'); }
       if (update.connection === 'close') {
-        if (update.lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
-          console.warn('WhatsApp logged this linked device out. See connector/README.md to pair again.'); stop(); return;
+        const diagnostic = disconnectDiagnostic(update.lastDisconnect?.error, { registered: state.creds.registered, pairingCodeShown, connected });
+        console.warn(diagnostic.message);
+        if ([DisconnectReason.loggedOut, DisconnectReason.forbidden].includes(diagnostic.code)) {
+          console.warn(authenticationFailureAdvice(state.creds.registered)); stop(); return;
         }
         if (++reconnectAttempts > 8) { console.warn('WhatsApp reconnect limit reached. Restart the connector later.'); stop(); return; }
         console.log('WhatsApp disconnected. Reconnecting…');

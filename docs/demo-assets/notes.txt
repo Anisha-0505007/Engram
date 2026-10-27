@@ -1,0 +1,5 @@
+Interview preparation: revise JavaScript closures, React state, Express APIs and MongoDB indexes.
+
+Engram project source: https://github.com/Anisha-0505007/Engram
+
+Private demo note: discuss my study plan.

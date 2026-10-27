@@ -11,6 +11,7 @@ postman/.dependencies/
 *.ndjson
 Agents.md
 **/.engram-session/
+**/.engram-session-backups/
 **/.engram-outbox/
 .cache/
 connector/dist/

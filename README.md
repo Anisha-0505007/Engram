@@ -249,6 +249,8 @@ Set backend environment variables on Render and redeploy. If the backend hostnam
 
 **Hosted verification status:** the [27 October submission audit](docs/submission-audit.md) records responding public routes and an unresolved fresh-account AI credentials failure. A complete hosted capture → enrichment → search → Ask run still requires confirmation. Cloudflare credentials are shared server configuration; registering another account does not fix them. After correcting the configuration, retry failed items to replace their stored error.
 
+Before recording, follow [demo readiness](docs/demo-readiness.md) to verify backend settings, private media upload/download, model access, search indexes and the complete application flow. `npm run demo:preflight` from `server/` reports missing configuration without printing secrets; it does not replace the live checks.
+
 **Official WhatsApp:** users send or forward content to Engram's business number. The Cloud API does not read their personal chat history. In Meta test mode, access is restricted to configured test numbers; see the [setup guide](docs/whatsapp-setup.md). Live delivery and replies remain unverified in the audit.
 
 **Personal connector:** the optional unofficial adapter runs locally and captures new messages from the owner's Message Yourself chat. It requires pairing and a running local process. Its Windows installer needs a separate deployment artifact step; the standard Render build does not publish it. Hosted installer availability and live pairing remain unverified. Manual setup is available in [connector/README.md](connector/README.md).

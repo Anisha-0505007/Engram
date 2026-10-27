@@ -24,7 +24,7 @@ The current frontend has **no Quick Add or upload form**. Capture endpoints exis
 | One-page PDF | `DEMO Library Policy. Students may borrow up to three books for 14 days. Return books at the library desk.` | PDF extraction and a source-linked answer. |
 | Confidential note | `Private demo note: discuss my study plan.` | Password unlock without revealing real private content. |
 
-Create the screenshot and PDF from the text above in a document editor. Label both as demo material. Add them through the tested capture route and let them finish processing before recording. Use the API helper at the end to create the Confidential note with `confidential: true`; its ordinary text is deliberately not something automatic detection should classify as sensitive.
+The matching [demo assets](demo-assets/README.md) include a labelled Wi-Fi image, a selectable-text library-policy PDF and the note text. Add them through the tested capture route and let them finish processing before recording. Use the API helper at the end to create the Confidential note with `confidential: true`; its ordinary text is deliberately not something automatic detection should classify as sensitive.
 
 Keep the live-capture note unsaved until its segment. Prepare a completed ordinary text item for **Reprocess**, or a real failed text item whose underlying problem has been corrected for **Retry processing**. Avoid using unclassified media for this step because it remains hidden from ordinary lists.
 
