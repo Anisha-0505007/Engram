@@ -1,23 +1,31 @@
-We save useful things every day: a link for later, a screenshot of a plan, or a document we might need. Weeks later, we remember what it was about, but not the exact words. Engram turns those saved things into a personal, searchable library.
+Hello, this is Engram, a personal library for the useful things we save and forget. Students and young professionals often collect links, screenshots, notes and PDFs in WhatsApp. Later, they remember the topic but struggle to find the original message.
 
-This is the deployed application. Each account has its own library. I can browse everything together or open sections for links, photos, upcoming events and bookmarks. Sensitive items have a separate password-protected section.
+Engram brings that content into one place, organizes it, and helps users find it through search and questions about their saved information.
 
-For this recording, I am using Engram's authenticated capture API. The current interface has WhatsApp setup, but no Quick Add form. This request creates a real saved item and queues the same enrichment pipeline. Here it is in the library. Processing happens in the background, while the original remains stored.
+For the current prototype, we connect WhatsApp using a local personal connector. After signing in to Engram and linking WhatsApp as a device, I can send a new note, link, image or PDF to my own Message Yourself chat. The connector sends it to my Engram library for background processing.
 
-This screenshot contains a Wi-Fi plan. Engram extracts its text and creates a summary and tags, while keeping the original available. The PDF is handled similarly: its readable text becomes searchable. These are real processed demo files. I can always check the original instead of relying only on generated metadata.
+This is an unofficial integration. It runs on my computer, needs to stay open, and captures new self-chat messages rather than importing old chats or reading other conversations.
 
-Search combines keyword matches with semantic similarity, and I can narrow results by type or saved date. This query finds the Wi-Fi screenshot. Ask AI retrieves saved items before generating an answer. Here, the library policy supplies the borrowing limit and duration. The source card lets me check those facts against the document.
+Our planned deployment route is Meta's official WhatsApp Cloud API. Users would send or forward content to Engram's dedicated business number, and our hosted server would receive it through a webhook. That would remove the need for a local connector. The official route is implemented, but completing the Meta setup and verifying live delivery remain future work.
 
-I can bookmark an item and give it a heading that makes sense to me. I can also correct its category and tags. These changes are stored separately from generated metadata, so reprocessing preserves my corrections. Refreshing shows that they are saved in the database.
+The dashboard has sections for All items, Links, Photos, Upcoming, Bookmarks and Confidential. Items also have categories and tags, which I can correct when needed.
 
-Confidential requires my password again and unlocks for five minutes. These items stay out of ordinary search and AI answers. This demo note was marked confidential before saving, so it skipped AI processing. The password lock controls access; it is not end-to-end encryption.
+Confidential adds a separate password unlock for sensitive content. It unlocks for five minutes, and these items stay outside ordinary search and AI answers. This is an access control feature, not end-to-end encryption. Automatic detection can make mistakes, and unmarked files may use external AI for classification.
 
-I can reprocess this saved item without creating another copy. The job is queued again while the original and my corrections remain stored. Jobs have retry limits and recovery for interrupted processing. This second account has a different library. The backend uses the verified account identity to check ownership, with automated tests for cross-account access.
+Engram also distinguishes two kinds of dates. The saved date tells me when the original message was sent. The event date is a deadline or appointment mentioned inside its content. A message saved today might describe an event next week.
 
-The frontend is React on Vercel. API requests go to Express on Render, which also runs the background worker. MongoDB stores users, items and durable jobs. Cloudflare handles AI processing, and private Supabase storage holds media.
+Saved-date filters help find older messages. Upcoming organizes future events by their event dates. The reminders panel shows events in the next seven days, with closer reminders within twenty-four hours and urgent reminders within one hour. These reminders update while the application is open.
 
-I chose a MongoDB job queue to avoid another infrastructure service. Unique capture IDs prevent duplicate items. Keyword and vector results are combined using Reciprocal Rank Fusion.
+Engram extracts useful text from images and PDFs, creates summaries and tags, and keeps the original files available. This makes information inside a screenshot searchable.
 
-Local checks passed 46 backend tests and 12 connector tests; three optional simulations were skipped. A reproducible search-quality benchmark is still pending. Reminders require the app to be open, and AI results need source checks.
+Search combines keyword matches with semantic similarity, so I can look for exact words or a related meaning. I can narrow the results using filters.
 
-Engram helps people save quickly and find useful information later. Thank you.
+Ask AI answers questions using retrieved saved items and shows source cards. Here, I can open the library-policy document and check the answer against the original. Generated answers still need that source check.
+
+I can bookmark useful items and edit their headings, categories and tags. My corrections are stored separately, so reprocessing preserves them.
+
+Processing happens in the background with visible status labels. Failed work can be retried after its cause is fixed. Each account has its own library, and the backend checks ownership when accessing saved content.
+
+Engram combines a React interface, an Express backend, MongoDB, AI processing and private media storage. The aim is to make saved information useful again, with organization, search and answers linked to original sources.
+
+The current prototype demonstrates the workflow, while the official WhatsApp integration is the next deployment step. Save in a moment. Find when it matters. Thank you.

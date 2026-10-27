@@ -2,7 +2,7 @@
 
 Use [demo-voiceover.txt](demo-voiceover.txt) as the spoken input. It contains narration only, without headings, timestamps, code or recording instructions. No audio has been generated in this repository.
 
-This version follows the **capture API** and **Reprocess** takes in [demo-script.md](demo-script.md). If recording working WhatsApp capture or a failed item's Retry action, replace the corresponding paragraph with that script's matching narration before generating audio. The screenshot, PDF and Ask sections assume the real demonstration has passed the recording checks.
+This version follows the five-part script in [demo-script.md](demo-script.md): project introduction; the current local WhatsApp connector and future official business-number plan; sections, Confidential and dates; other features; and conclusion. Match the screen recording to these paragraphs. The reminders narration now covers the next seven days.
 
 ## ElevenLabs settings
 
@@ -18,6 +18,6 @@ The model choice and settings follow the official [Text to Speech overview](http
 
 Each paragraph group corresponds to a scene in the demo script. You can generate groups separately using the same voice and settings, then place each audio clip over the matching screen action. This makes pauses and revisions easier without regenerating the entire narration.
 
-The target video is approximately 4 minutes 30 seconds, including screen actions and pauses. Measure the generated audio and adjust the edit; text alone cannot guarantee runtime. Do not speed through source checks or silently replace a failed workflow to match the narration.
+The target video is approximately 4 minutes 30 seconds to 5 minutes, including screen actions and pauses. Measure the generated audio and adjust the edit; text alone cannot guarantee runtime. Do not speed through source checks or silently replace a failed workflow to match the narration.
 
 Keep passwords, pairing codes and credentials out of the voiceover and recording. Add “Narration generated with ElevenLabs” to the video description or end credits so the production method is clear.

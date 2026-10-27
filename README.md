@@ -4,7 +4,7 @@
 
 A personal knowledge library that turns saved notes, links, screenshots and PDFs into searchable information. Engram combines background content processing, keyword and semantic search, and answers linked to the user's saved sources.
 
-[Live Application](https://engram-beryl.vercel.app) · [Source Code](https://github.com/Anisha-0505007/Engram) · [API Documentation](docs/api.md) · [Demo Script](docs/demo-script.md)
+[Live Application](https://engram-beryl.vercel.app) · [Demo Video](https://drive.google.com/file/d/1aMQdUfs8O5oBI3xTT5px_YolaMHcxVEM/view?usp=sharing) · [Source Code](https://github.com/Anisha-0505007/Engram) · [API Documentation](docs/api.md) · [Demo Script](docs/demo-script.md)
 
 ## Problem Statement
 
@@ -143,15 +143,15 @@ Engram/
 │   │   ├── routes/         API and webhook routes
 │   │   ├── services/       Capture, AI, search, storage and URL fetching
 │   │   └── worker/         Job processing and recovery
-│   ├── scripts/            Index setup, evaluation and diagnostic tools
-│   └── tests/              Unit and integration tests
+│   └── build.sh            Production build script
 ├── connector/              Optional local WhatsApp adapter
 ├── docs/                   API, deployment, evaluation and demo documentation
-├── postman/                Optional AI simulation configuration
 ├── .env.example            Environment-variable reference
 ├── AGENTS.md               Development and learning protocol
 └── LEARNING.md             Learning notes and topics for further study
 ```
+
+Development helper scripts, tests, mocks, Postman simulations and generated reports are kept locally and excluded from Git. Production build scripts remain tracked. Commands for local verification below require those local tooling files and are unavailable in a fresh clone.
 
 ## Local Setup
 
@@ -176,7 +176,7 @@ npm ci
 
 Copy `server/.env.example` to `server/.env` on your computer, then enter your own configuration. Keep the private file out of version control. Set `CLIENT_ORIGIN=http://localhost:5173` for the Vite development server.
 
-From `server/`, provision the Atlas indexes and check their status:
+Provision the Atlas `text_index` and `vector_index` before using search. If you have the local development tooling, run the following from `server/`; a fresh clone requires provisioning the indexes through Atlas instead:
 
 ```sh
 node scripts/searchIndexes.mjs --apply
@@ -241,7 +241,7 @@ Provider access, model terms and hosting quotas depend on the configured account
 | Render | Root: `server`; build: `bash build.sh`; start: `npm start`; deployment branch: `main`. |
 | Official webhook | `https://engram-eont.onrender.com/webhook/whatsapp`, when Meta is configured. |
 | Evaluator access | Register a separate account through the application; no shared demo credentials are published. |
-| Demo video | Public recording link pending; [recording script](docs/demo-script.md) available. |
+| Demo video | [Watch the Engram demo](https://drive.google.com/file/d/1aMQdUfs8O5oBI3xTT5px_YolaMHcxVEM/view?usp=sharing) |
 
 Set backend environment variables on Render and redeploy. If the backend hostname changes, update the destination in `client/vercel.json`. The Render build also copies the frontend into `server/public/` for Express serving; a standalone client build writes only to `client/dist`.
 
@@ -249,7 +249,7 @@ Set backend environment variables on Render and redeploy. If the backend hostnam
 
 **Hosted verification status:** the [27 October submission audit](docs/submission-audit.md) records responding public routes and an unresolved fresh-account AI credentials failure. A complete hosted capture → enrichment → search → Ask run still requires confirmation. Cloudflare credentials are shared server configuration; registering another account does not fix them. After correcting the configuration, retry failed items to replace their stored error.
 
-Before recording, follow [demo readiness](docs/demo-readiness.md) to verify backend settings, private media upload/download, model access, search indexes and the complete application flow. `npm run demo:preflight` from `server/` reports missing configuration without printing secrets; it does not replace the live checks.
+Before recording, follow [demo readiness](docs/demo-readiness.md) to verify backend settings, private media upload/download, model access, search indexes and the complete application flow. With the local tooling available, `npm run demo:preflight` from `server/` reports missing configuration without printing secrets; it does not replace the live checks.
 
 **Official WhatsApp:** users send or forward content to Engram's business number. The Cloud API does not read their personal chat history. In Meta test mode, access is restricted to configured test numbers; see the [setup guide](docs/whatsapp-setup.md). Live delivery and replies remain unverified in the audit.
 
@@ -257,7 +257,7 @@ Before recording, follow [demo readiness](docs/demo-readiness.md) to verify back
 
 ## Testing and Verification
 
-Run the automated checks from the repository root:
+Tests and their helper scripts are intentionally excluded from Git and retained in the local development copy. With those files available, run the automated checks from the repository root:
 
 ```sh
 cd server
@@ -279,7 +279,7 @@ Results from the local verification run on **27 October 2026**:
 
 Tests cover authentication, cross-account access denial, capture deduplication, worker retry and recovery, quota behavior, bookmarks, Confidential access, input validation, SSRF protection, structured AI output and provider HTTP errors. Database integration tests use isolated in-memory MongoDB and temporary files under `.cache/test-tmp/`.
 
-In-memory MongoDB does not execute Atlas Search or Atlas Vector Search. Local tests establish filter and ranking behavior, not hosted search relevance, live WhatsApp pairing or provider availability. The three optional simulations require an explicit opt-in setup described in [the simulation guide](postman/simulations/ai-local.context.md). The [submission audit](docs/submission-audit.md) records broader checks and outstanding hosted verification.
+In-memory MongoDB does not execute Atlas Search or Atlas Vector Search. Local tests establish filter and ranking behavior, not hosted search relevance, live WhatsApp pairing or provider availability. The three optional Postman simulations and their setup guide are local-only. The [submission audit](docs/submission-audit.md) records broader checks and outstanding hosted verification.
 
 ## Evaluation Results
 
@@ -287,7 +287,7 @@ A reproducible search-quality benchmark has **not yet been published**. No accur
 
 The [evaluation guide](docs/evaluation.md) defines a comparison of keyword, vector and hybrid retrieval using at least 25 queries with expected item IDs. The runner measures **top-5 hit rate**: the fraction of queries for which at least one expected item appears in the first five results.
 
-With a dedicated evaluation account, completed enrichment, ready Atlas indexes and `EVAL_EMAIL` / `EVAL_PASSWORD` set in the invoking shell, run from `server/`:
+The evaluation runner is also local-only. With that tooling, a dedicated evaluation account, completed enrichment, ready Atlas indexes and `EVAL_EMAIL` / `EVAL_PASSWORD` set in the invoking shell, run from `server/`:
 
 ```sh
 node scripts/evaluate.mjs ../docs/eval-cases.json
@@ -297,7 +297,7 @@ Create the case file first using the documented format. `EVAL_BASE_URL` optional
 
 ## Limitations and What I Deliberately Didn't Build
 
-- **Hosted release completion:** fresh-account AI processing remains unverified after a reported credentials failure. A public demo video is still pending. A passing health endpoint does not establish working AI, storage or authenticated workflows.
+- **Hosted release completion:** fresh-account AI processing remains unverified after a reported credentials failure. A passing health endpoint does not establish working AI, storage or authenticated workflows.
 - **Model reliability:** extraction, privacy classification, event dates and generated answers can be wrong. Citation-ID validation cannot prove that every statement is supported; users should inspect original sources.
 - **Privacy scope:** Confidential is an access control, not end-to-end encryption. Explicitly marking content Confidential before saving skips AI processing; unmarked images and PDFs may reach the provider for classification. Signed media links remain usable until expiry: 60 seconds for protected/unclassified media, up to one hour for ordinary media.
 - **Document retrieval:** there is no independently searchable PDF/article chunk collection. Long embedding input is split into bounded windows and combined into one vector per item, which can lose detail.
