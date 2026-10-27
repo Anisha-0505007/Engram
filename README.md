@@ -18,13 +18,13 @@ Engram addresses this retrieval problem by keeping the original content, extract
 - **Young professionals** collecting reference material, documents and personal notes.
 - **People who save information in WhatsApp** and want an organized library they can search later.
 
-The web application provides a standalone capture workflow, so evaluators can use Engram without connecting WhatsApp.
+Evaluators can browse and search a prepared demo library without connecting WhatsApp. Authenticated capture and upload APIs also support adding demo content; the current frontend has no Quick Add or upload form.
 
 ## Solution
 
 Engram connects capture, processing, retrieval and organization in one application:
 
-1. **Save:** add a note or URL through Quick Add, upload an image or PDF, or use an optional WhatsApp integration.
+1. **Save:** capture notes, URLs, images and PDFs through the authenticated API or a configured WhatsApp integration.
 2. **Process:** a background worker extracts text, generates a title, summary, category and tags, and creates a numerical representation of the content called an embedding.
 3. **Find:** search using remembered words or meaning. Engram combines keyword matches with semantic results and supports type, category and saved-date filters.
 4. **Ask:** ask a question about saved content and view the retrieved sources alongside the answer.
@@ -37,7 +37,7 @@ Items display `pending`, `processing`, `done` or `failed`, making background wor
 | Feature | Application behavior |
 |---|---|
 | Account-based libraries | Registration, login and logout; item access is scoped to the authenticated account. |
-| Web capture | Quick Add for notes and links; JPEG, PNG, WebP and PDF uploads up to 10 MB per decoded file. |
+| Capture APIs | Notes and links; JPEG, PNG, WebP and PDF uploads up to 10 MB per decoded file. The current frontend exposes WhatsApp setup rather than a Quick Add form. |
 | Content enrichment | Link text and metadata, image transcription and descriptions, PDF text extraction, summaries, categories and tags. |
 | Hybrid search | Atlas keyword and vector retrieval combined through Reciprocal Rank Fusion (RRF), with visible fallback warnings when dependencies are unavailable. |
 | Source-linked answers | Ask retrieves saved content, checks generated citation IDs and displays source cards. Empty retrieval produces a not-found response. |
@@ -201,7 +201,7 @@ cd client
 npm run dev
 ```
 
-Open [localhost:5173](http://localhost:5173). Vite proxies `/api` to Express on port 8000. Register an account, save a harmless note through Quick Add and inspect its processing status. Registration and capture need MongoDB; AI processing needs valid provider access; uploads additionally need storage.
+Open [localhost:5173](http://localhost:5173). Vite proxies `/api` to Express on port 8000. Register an account, save a harmless note through a configured capture route and inspect its processing status. The [demo script](docs/demo-script.md#capture-api-helpers) includes authenticated API examples for adding synthetic content without WhatsApp. Registration and capture need MongoDB; AI processing needs valid provider access; uploads additionally need storage.
 
 On Windows PowerShell, use `npm.cmd` if execution policy blocks the `npm.ps1` shim. Optional WhatsApp installation and pairing are documented in the [connector guide](connector/README.md) and [official integration guide](docs/whatsapp-setup.md).
 
@@ -245,7 +245,7 @@ Provider access, model terms and hosting quotas depend on the configured account
 
 Set backend environment variables on Render and redeploy. If the backend hostname changes, update the destination in `client/vercel.json`. The Render build also copies the frontend into `server/public/` for Express serving; a standalone client build writes only to `client/dist`.
 
-**Suggested evaluator flow:** register, save a note or link, upload a harmless screenshot, observe processing, search saved content, try Ask, edit a heading and bookmark an item. WhatsApp setup is optional for this web workflow.
+**Suggested evaluator flow:** sign in to an account with prepared demo items, search saved content, try Ask, edit a heading and bookmark an item. A newly registered account starts empty. Add content through a configured WhatsApp route or the authenticated API examples in the [demo script](docs/demo-script.md#capture-api-helpers); there is currently no browser capture form.
 
 **Hosted verification status:** the [27 October submission audit](docs/submission-audit.md) records responding public routes and an unresolved fresh-account AI credentials failure. A complete hosted capture → enrichment → search → Ask run still requires confirmation. Cloudflare credentials are shared server configuration; registering another account does not fix them. After correcting the configuration, retry failed items to replace their stored error.
 
