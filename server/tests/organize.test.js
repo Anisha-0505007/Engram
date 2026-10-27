@@ -21,12 +21,18 @@ test('dates need source evidence and date-only events retain India calendar date
   assert.equal(EnrichmentSchema.safeParse(base).success, false);
 });
 
-test('reminders move from one-day to urgent and stop after the event', () => {
+test('reminders cover seven days, move to daily and urgent stages, and exclude invalid or past dates', () => {
   const now = Date.parse('2026-10-26T00:00:00Z');
-  assert.equal(reminderStage(now + 90000_000, now), null);
+  assert.equal(reminderStage(now + 7 * 86400_000 + 1, now), null);
+  assert.equal(reminderStage(now + 7 * 86400_000, now), 'week');
+  assert.equal(reminderStage(now + 3 * 86400_000, now), 'week');
+  assert.equal(reminderStage(now + 86400_000 + 1, now), 'week');
+  assert.equal(reminderStage(now + 86400_000, now), 'day');
   assert.equal(reminderStage(now + 7200_000, now), 'day');
   assert.equal(reminderStage(now + 3600_000, now), 'hour');
+  assert.equal(reminderStage(now, now), 'hour');
   assert.equal(reminderStage(now - 1, now), null);
+  assert.equal(reminderStage('not a date', now), null);
 });
 
 test('structured replies accept fenced JSON inside prose but still reject invalid fields', () => {

@@ -8,7 +8,7 @@ import { retrieve, buildFilter } from '../services/search.service.js';
 import { enqueueEnrichment } from '../services/jobs.service.js';
 import { getPresignedUrl, deleteFile, uploadFile } from '../services/storage.service.js';
 import { vaultUnlocked, itemAccess } from '../middleware/vault.js';
-import { reminderStage } from '../services/organize.service.js';
+import { reminderStage, REMINDER_WINDOW_MS } from '../services/organize.service.js';
 
 export async function listItems(req, res) {
   const { cursor, limit, status, ...options } = req.validated;
@@ -200,7 +200,7 @@ export async function setBookmark(req, res) {
 export async function listReminders(req, res) {
   const now = new Date();
   const items = await Item.find({ userId: req.userId, confidential: { $ne: true }, privacyPending: { $ne: true },
-    events: { $elemMatch: { dueAt: { $gte: now, $lte: new Date(now.getTime() + 86400_000) } } } }).select('enrichment.title events dismissedReminders').lean();
+    events: { $elemMatch: { dueAt: { $gte: now, $lte: new Date(now.getTime() + REMINDER_WINDOW_MS) } } } }).select('enrichment.title events dismissedReminders').lean();
   const reminders = items.flatMap(item => item.events.flatMap(event => {
     const stage = reminderStage(event.dueAt, now.getTime());
     const key = `${event._id}:${stage}`;

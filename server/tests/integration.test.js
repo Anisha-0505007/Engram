@@ -98,6 +98,39 @@ test('sections overlap, Upcoming sorts by nearest event, and reminders dismiss p
   assert.equal((await request('/api/items/reminders')).data.reminders.length, 1);
 });
 
+test('seven-day reminders are sorted, owner-scoped, private-safe and dismiss independently of later stages', async () => {
+  const now = Date.now();
+  const day = 86400_000;
+  const events = [
+    { label: 'Past event', evidence: 'fixture', dueAt: new Date(now - day) },
+    { label: 'Three days away', evidence: 'fixture', dueAt: new Date(now + 3 * day) },
+    { label: 'Later today', evidence: 'fixture', dueAt: new Date(now + 2 * 3600_000) },
+    { label: 'Seven days away', evidence: 'fixture', dueAt: new Date(now + 7 * day) },
+    { label: 'Outside this week', evidence: 'fixture', dueAt: new Date(now + 8 * day) },
+  ];
+  const item = await Item.create({ userId: owner._id, source: 'web', type: 'text', rawText: 'Demo schedule', events });
+  const foreign = await Item.create({ userId: other._id, source: 'web', type: 'text', events });
+  await Item.create({ userId: owner._id, source: 'web', type: 'text', confidential: true, events });
+  await Item.create({ userId: owner._id, source: 'web', type: 'text', privacyPending: true, events });
+  let result = await request('/api/items/reminders');
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(result.data.reminders.map(reminder => [reminder.label, reminder.stage]), [
+    ['Later today', 'day'], ['Three days away', 'week'], ['Seven days away', 'week'],
+  ]);
+  assert.ok(result.data.reminders.every(reminder => String(reminder.itemId) === String(item._id)));
+  const weekReminder = result.data.reminders.find(reminder => reminder.label === 'Three days away');
+  assert.equal((await request(`/api/items/${foreign._id}/dismiss-reminder`, { method: 'POST', body: { key: weekReminder.key } })).response.status, 404);
+  assert.equal((await request(`/api/items/${item._id}/dismiss-reminder`, { method: 'POST', body: { key: weekReminder.key } })).response.status, 200);
+  result = await request('/api/items/reminders');
+  assert.equal(result.data.reminders.length, 2);
+  // Approaching the event creates a separate day-stage reminder despite week dismissal.
+  await Item.updateOne({ _id: item._id, userId: owner._id }, { $set: { 'events.1.dueAt': new Date(Date.now() + 12 * 3600_000) } });
+  result = await request('/api/items/reminders');
+  const closer = result.data.reminders.find(reminder => reminder.label === 'Three days away');
+  assert.equal(closer.stage, 'day');
+  assert.notEqual(closer.key, weekReminder.key);
+});
+
 test('Photos excludes confidential and unclassified images and date filters preserve original timestamps', async () => {
   await Item.create({ userId: owner._id, source: 'web', type: 'image', rawText: 'garden photograph', privacyPending: false, originalTimestamp: '2026-08-01T12:00:00Z' });
   await Item.create({ userId: owner._id, source: 'web', type: 'image', rawText: 'unclassified upload' });

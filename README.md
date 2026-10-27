@@ -45,7 +45,7 @@ Items display `pending`, `processing`, `done` or `failed`, making background wor
 | User corrections | Editable headings, categories and tags stored separately from generated enrichment so reprocessing preserves changes. |
 | Durable processing | MongoDB-backed jobs, atomic claims, exponential backoff, failed-job recovery and per-user daily AI budgets. |
 | Confidential items | A separate five-minute password unlock, protected media access and exclusion from normal search and AI answers. |
-| Event reminders | Evidence-backed event extraction and in-app reminders within 24 hours of an event, becoming urgent within one hour. |
+| Event reminders | Evidence-backed events for the next seven days, with nearer reminders within 24 hours and urgent reminders within one hour. |
 | Optional WhatsApp capture | Official business-number webhook support and a separate local personal connector. |
 | Web interface | Responsive desktop-style windows, section navigation, themes, onboarding and loading, empty, error and success states. |
 

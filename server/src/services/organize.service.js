@@ -22,8 +22,13 @@ export function verifiedEvents(events = [], source = '') {
     }).filter(event => Number.isFinite(event.dueAt.getTime()));
 }
 
+export const REMINDER_WINDOW_MS = 7 * 86400_000;
+
 export function reminderStage(dueAt, now = Date.now()) {
   const remaining = new Date(dueAt).getTime() - now;
-  if (remaining < 0 || remaining > 86400_000) return null;
-  return remaining <= 3600_000 ? 'hour' : 'day';
+  if (!Number.isFinite(remaining) || remaining < 0 || remaining > REMINDER_WINDOW_MS) return null;
+  if (remaining <= 3600_000) return 'hour';
+  if (remaining <= 86400_000) return 'day';
+  // A week-stage dismissal must not suppress the closer day/hour reminders.
+  return 'week';
 }

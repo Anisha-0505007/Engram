@@ -42,7 +42,7 @@ router.patch('/:id', validate(edits), updateItem);
 router.delete('/:id', deleteItem);
 router.post('/:id/retry', rateLimit(10), retryItem);
 router.post('/:id/confidential', setConfidential);
-router.post('/:id/dismiss-reminder', validate(z.object({ key: z.string().regex(/^[a-f\d]{24}:(day|hour)$/i) })), dismissReminder);
+router.post('/:id/dismiss-reminder', validate(z.object({ key: z.string().regex(/^[a-f\d]{24}:(week|day|hour)$/i) })), dismissReminder);
 
 export default router;
 
