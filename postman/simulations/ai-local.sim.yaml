@@ -1,6 +1,0 @@
-simulation: ai-local
-routing: path
-mocks:
-  - name: cloudflare
-    routeKey: cloudflare
-    path: postman/mocks/cloudflare/config.yaml

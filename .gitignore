@@ -15,3 +15,24 @@ Agents.md
 **/.engram-outbox/
 .cache/
 connector/dist/
+
+# Local development scripts, tests, mocks and verification tools.
+/server/scripts/
+/server/tests/
+/connector/tests/
+/postman/
+/connector/windows/verify.ps1
+**/__tests__/
+**/__mocks__/
+**/*.test.*
+**/*.spec.*
+
+# Generated test reports and debugging output.
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+*.log
+
+# Keep server/build.sh and connector/windows/build.ps1: deployment uses them.
